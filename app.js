@@ -335,7 +335,7 @@ const Telas = {
         <div class="form-grid">
           <div class="form-group" style="grid-column:1/-1">
             <label>Ordem de Produção (OP)</label>
-            <select id="ap-op" onchange="Acoes.filtrarProdutosFinais()">
+            <select id="ap-op" onchange="Acoes.filtrarProdutosFinaisSelect()">
               <option value="">-- Selecione a OP --</option>
               ${opOpts}
             </select>
@@ -351,19 +351,11 @@ const Telas = {
             <label>Data do Apontamento</label>
             <input type="date" id="ap-data" value="${new Date().toISOString().split('T')[0]}" />
           </div>
-          <div class="form-group">
-            <label>Produto Final (código)</label>
-            <div class="autocomplete-wrap">
-              <input type="text" id="ap-prod-cod" placeholder="Buscar por código..." oninput="debounce(()=>Autocomplete.buscarFinais('ap-prod-cod','ap-prod-desc'),'ap-cod')" />
-              <div class="autocomplete-lista" id="auto-ap-prod-cod"></div>
-            </div>
-          </div>
-          <div class="form-group">
-            <label>Produto Final (descrição)</label>
-            <div class="autocomplete-wrap">
-              <input type="text" id="ap-prod-desc" placeholder="Buscar por descrição..." oninput="debounce(()=>Autocomplete.buscarFinais('ap-prod-desc','ap-prod-cod'),'ap-desc')" />
-              <div class="autocomplete-lista" id="auto-ap-prod-desc"></div>
-            </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label>Produto Final</label>
+            <select id="ap-produto-sel" onchange="Acoes.selecionarProdutoFinal()">
+              <option value="">-- Selecione primeiro a OP --</option>
+            </select>
           </div>
           <div class="form-group">
             <label>Quantidade Produzida (unidades)</label>
@@ -378,9 +370,8 @@ const Telas = {
     `;
     Autocomplete._produtosFinais = produtosFinais;
     Autocomplete._produtosTodos = produtos;
-    if (opPreSelecionada) Acoes.filtrarProdutosFinais();
+    if (opPreSelecionada) Acoes.filtrarProdutosFinaisSelect();
   },
-
   // ==================== PRODUTOS ====================
   async produtos() {
     const el = document.getElementById('tela-produtos');
@@ -738,6 +729,26 @@ selecionarProdutoRec() {
     document.getElementById('ap-prod-cod').value = '';
     document.getElementById('ap-prod-desc').value = '';
     Autocomplete._apSelId = null;
+  },
+  filtrarProdutosFinaisSelect() {
+    const sel = document.getElementById('ap-op');
+    const masterID = sel.options[sel.selectedIndex]?.getAttribute('data-master');
+    const selProd = document.getElementById('ap-produto-sel');
+    Autocomplete._apSelId = null;
+    if (!masterID) {
+      selProd.innerHTML = '<option value="">-- Selecione primeiro a OP --</option>';
+      return;
+    }
+    const finais = (Autocomplete._produtosTodos || []).filter(
+      p => p.tipo === 'final' && p.produto_master_id === masterID
+    );
+    selProd.innerHTML = '<option value="">-- Selecione o produto final --</option>' +
+      finais.map(p => `<option value="${p.id}">${p.codigo} — ${p.descricao}</option>`).join('');
+  },
+
+  selecionarProdutoFinal() {
+    const sel = document.getElementById('ap-produto-sel');
+    Autocomplete._apSelId = sel.value || null;
   },
 
   async salvarApontamento() {
