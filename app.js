@@ -952,11 +952,14 @@ const Autocomplete = {
     ).join('');
   },
 
-  _selecionarRec(id, valPrincipal, valSecundario, inputId, outroCampoId, listId) {
-    document.getElementById(inputId).value = valPrincipal;
-    document.getElementById(outroCampoId).value = valSecundario;
-    document.getElementById(listId).innerHTML = '';
-    this._recSelId = id;
+_selecionarRec(id, valPrincipal, valSecundario, inputId, outroCampoId, listId) {
+    const inputPrincipal = document.getElementById(inputId);
+    const inputSecundario = document.getElementById(outroCampoId);
+    const lista = document.getElementById(listId);
+    if (inputPrincipal) inputPrincipal.value = valPrincipal;
+    if (inputSecundario) inputSecundario.value = valSecundario;
+    if (lista) lista.innerHTML = '';
+    Autocomplete._recSelId = id;
   },
 
   buscarFinais(inputId, outroCampoId) {
