@@ -24,7 +24,9 @@ const Api = {
     Spinner.mostrar();
     try {
       const qs = new URLSearchParams({ action, token: Estado.token, ...params }).toString();
-      const r = await fetch(`${API_URL}?${qs}`);
+      const r = await fetch(`${API_URL}?${qs}`, {
+  redirect: 'follow'
+});
       return await r.json();
     } catch(e) { return { ok: false, erro: 'Erro de conexão.' }; }
     finally { Spinner.ocultar(); }
@@ -33,10 +35,11 @@ const Api = {
     Spinner.mostrar();
     try {
       const r = await fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, token: Estado.token, ...body })
-      });
+  method: 'POST',
+  headers: { 'Content-Type': 'text/plain' },
+  body: JSON.stringify({ action, token: Estado.token, ...body }),
+  redirect: 'follow'
+});
       return await r.json();
     } catch(e) { return { ok: false, erro: 'Erro de conexão.' }; }
     finally { Spinner.ocultar(); }
