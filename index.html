@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PCP — Planejamento e Controle de Produção</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ===================== TELA DE LOGIN ===================== -->
+<div id="tela-login" class="tela-login">
+  <div class="login-box">
+    <div class="login-logo">
+      <span class="logo-icon">⚙️</span>
+      <h1>PCP</h1>
+      <p>Planejamento e Controle de Produção</p>
+    </div>
+    <div id="login-form-wrap">
+      <input type="email" id="login-email" placeholder="Seu e-mail" />
+      <input type="password" id="login-senha" placeholder="Senha" />
+      <button class="btn-primary" onclick="App.login()">Entrar</button>
+      <a href="#" class="link-reset" onclick="App.mostrarReset()">Esqueci minha senha</a>
+    </div>
+    <div id="reset-form-wrap" style="display:none">
+      <p style="margin-bottom:12px;color:#94a3b8;font-size:14px">Informe seu e-mail para receber o link de recuperação:</p>
+      <input type="email" id="reset-email" placeholder="Seu e-mail" />
+      <button class="btn-primary" onclick="App.solicitarReset()">Enviar link</button>
+      <a href="#" class="link-reset" onclick="App.mostrarLogin()">Voltar ao login</a>
+    </div>
+    <div id="login-msg"></div>
+  </div>
+</div>
+
+<!-- ===================== APP PRINCIPAL ===================== -->
+<div id="app" style="display:none">
+
+  <!-- Sidebar -->
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-header">
+      <span class="logo-icon">⚙️</span>
+      <span class="sidebar-titulo">PCP</span>
+      <button class="btn-collapse" onclick="App.toggleSidebar()">☰</button>
+    </div>
+    <nav>
+      <a href="#" class="nav-item" data-tela="dashboard" onclick="App.navegar('dashboard')">
+        <span class="nav-icon">📊</span><span class="nav-label">Dashboard</span>
+      </a>
+      <a href="#" class="nav-item" data-tela="recebimento" onclick="App.navegar('recebimento')">
+        <span class="nav-icon">📦</span><span class="nav-label">Recebimento</span>
+      </a>
+      <a href="#" class="nav-item" data-tela="apontamento" onclick="App.navegar('apontamento')">
+        <span class="nav-icon">✅</span><span class="nav-label">Apontamento</span>
+      </a>
+      <!-- Admin only -->
+      <a href="#" class="nav-item admin-only" data-tela="produtos" onclick="App.navegar('produtos')">
+        <span class="nav-icon">🏷️</span><span class="nav-label">Produtos</span>
+      </a>
+      <a href="#" class="nav-item admin-only" data-tela="funcionarios" onclick="App.navegar('funcionarios')">
+        <span class="nav-icon">👷</span><span class="nav-label">Funcionários</span>
+      </a>
+      <a href="#" class="nav-item admin-only" data-tela="usuarios" onclick="App.navegar('usuarios')">
+        <span class="nav-icon">👤</span><span class="nav-label">Usuários</span>
+      </a>
+      <a href="#" class="nav-item admin-only" data-tela="despesas" onclick="App.navegar('despesas')">
+        <span class="nav-icon">💸</span><span class="nav-label">Despesas</span>
+      </a>
+      <a href="#" class="nav-item admin-only" data-tela="dre" onclick="App.navegar('dre')">
+        <span class="nav-icon">📈</span><span class="nav-label">DRE</span>
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <span id="sidebar-user"></span>
+      <button class="btn-logout" onclick="App.logout()">Sair</button>
+    </div>
+  </aside>
+
+  <!-- Conteúdo principal -->
+  <main id="main-content">
+    <div id="tela-dashboard"></div>
+    <div id="tela-recebimento" style="display:none"></div>
+    <div id="tela-apontamento" style="display:none"></div>
+    <div id="tela-produtos" style="display:none"></div>
+    <div id="tela-funcionarios" style="display:none"></div>
+    <div id="tela-usuarios" style="display:none"></div>
+    <div id="tela-despesas" style="display:none"></div>
+    <div id="tela-dre" style="display:none"></div>
+  </main>
+</div>
+
+<!-- ===================== MODAL GENÉRICO ===================== -->
+<div id="modal-overlay" class="modal-overlay" style="display:none" onclick="Modal.fechar()">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3 id="modal-titulo"></h3>
+      <button onclick="Modal.fechar()">✕</button>
+    </div>
+    <div id="modal-corpo"></div>
+    <div class="modal-footer">
+      <button id="modal-btn-cancelar" class="btn-secondary" onclick="Modal.fechar()">Cancelar</button>
+      <button id="modal-btn-salvar" class="btn-primary" onclick="Modal.salvar()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast de notificação -->
+<div id="toast" class="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
