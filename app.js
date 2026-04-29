@@ -3,7 +3,7 @@
 // ============================================================
 
 // ⚠️ EDITE ESTA URL com a URL do seu Google Apps Script publicado:
-const API_URL = 'COLE_AQUI_A_URL_DO_APPS_SCRIPT';
+const API_URL = 'https://script.google.com/macros/s/AKfycbxGobGm5H2Mee6IoP-smUcBovlmEs15_lhHgg-yyFKNErmkQKs7K8atb06ph-VViT5Q/exec';
 
 // ============================================================
 // ESTADO GLOBAL
