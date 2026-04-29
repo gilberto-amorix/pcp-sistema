@@ -3,7 +3,7 @@
 // ============================================================
 
 // ⚠️ EDITE ESTA URL com a URL do seu Google Apps Script publicado:
-const API_URL = 'COLE_AQUI_A_URL_DO_APPS_SCRIPT';
+const API_URL = 'https://script.google.com/macros/s/AKfycbxGobGm5H2Mee6IoP-smUcBovlmEs15_lhHgg-yyFKNErmkQKs7K8atb06ph-VViT5Q/exec';
 
 // ============================================================
 // ESTADO GLOBAL
@@ -24,7 +24,9 @@ const Api = {
     Spinner.mostrar();
     try {
       const qs = new URLSearchParams({ action, token: Estado.token, ...params }).toString();
-      const r = await fetch(`${API_URL}?${qs}`);
+      const r = await fetch(`${API_URL}?${qs}`, {
+  redirect: 'follow'
+});
       return await r.json();
     } catch(e) { return { ok: false, erro: 'Erro de conexão.' }; }
     finally { Spinner.ocultar(); }
@@ -33,10 +35,11 @@ const Api = {
     Spinner.mostrar();
     try {
       const r = await fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, token: Estado.token, ...body })
-      });
+  method: 'POST',
+  headers: { 'Content-Type': 'text/plain' },
+  body: JSON.stringify({ action, token: Estado.token, ...body }),
+  redirect: 'follow'
+});
       return await r.json();
     } catch(e) { return { ok: false, erro: 'Erro de conexão.' }; }
     finally { Spinner.ocultar(); }
@@ -266,6 +269,10 @@ const Telas = {
     const r = await Api.get('listarProdutos', { tipo: 'master', ativo: 'true' });
     const produtos = r.ok ? r.dados : [];
 
+    const opts = produtos.map(p => 
+      `<option value="${p.id}" data-cod="${p.codigo}" data-desc="${p.descricao}">${p.codigo} — ${p.descricao}</option>`
+    ).join('');
+
     el.innerHTML = `
       <div class="page-titulo">📦 Lançamento de Recebimento</div>
       <div class="card">
@@ -274,19 +281,20 @@ const Telas = {
             <label>Data</label>
             <input type="date" id="rec-data" value="${new Date().toISOString().split('T')[0]}" disabled />
           </div>
-          <div class="form-group">
-            <label>Produto Master (código)</label>
-            <div class="autocomplete-wrap">
-              <input type="text" id="rec-prod-cod" placeholder="Buscar por código..." oninput="debounce(()=>Autocomplete.buscar('rec-prod-cod','rec-prod-desc',${JSON.stringify(produtos)},'codigo','descricao'),'rec-cod')" />
-              <div class="autocomplete-lista" id="auto-rec-prod-cod"></div>
-            </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label>Produto Master</label>
+            <select id="rec-produto-sel" onchange="Acoes.selecionarProdutoRec()">
+              <option value="">-- Selecione o produto master --</option>
+              ${opts}
+            </select>
           </div>
           <div class="form-group">
-            <label>Produto Master (descrição)</label>
-            <div class="autocomplete-wrap">
-              <input type="text" id="rec-prod-desc" placeholder="Buscar por descrição..." oninput="debounce(()=>Autocomplete.buscar('rec-prod-desc','rec-prod-cod',${JSON.stringify(produtos)},'descricao','codigo'),'rec-desc')" />
-              <div class="autocomplete-lista" id="auto-rec-prod-desc"></div>
-            </div>
+            <label>Código selecionado</label>
+            <input type="text" id="rec-cod-view" disabled placeholder="Preenchido automaticamente" />
+          </div>
+          <div class="form-group">
+            <label>Descrição selecionada</label>
+            <input type="text" id="rec-desc-view" disabled placeholder="Preenchido automaticamente" />
           </div>
           <div class="form-group">
             <label>Quantidade Recebida (kg)</label>
@@ -303,7 +311,6 @@ const Telas = {
         <div id="rec-msg" style="margin-top:12px;font-size:14px"></div>
       </div>
     `;
-    Autocomplete._produtosRec = produtos;
   },
 
   // ==================== APONTAMENTO ====================
@@ -315,6 +322,7 @@ const Telas = {
     ]);
     const ops = rOPs.ok ? rOPs.dados : [];
     const produtos = rProds.ok ? rProds.dados : [];
+    const produtosFinais = produtos.filter(p => p.tipo === 'final');
 
     const opOpts = ops.map(op => {
       const prod = produtos.find(p => p.id === op.produto_master_id);
@@ -327,7 +335,7 @@ const Telas = {
         <div class="form-grid">
           <div class="form-group" style="grid-column:1/-1">
             <label>Ordem de Produção (OP)</label>
-            <select id="ap-op" onchange="Acoes.filtrarProdutosFinaisSelect()">
+            <select id="ap-op" onchange="Acoes.filtrarProdutosFinais()">
               <option value="">-- Selecione a OP --</option>
               ${opOpts}
             </select>
@@ -343,11 +351,19 @@ const Telas = {
             <label>Data do Apontamento</label>
             <input type="date" id="ap-data" value="${new Date().toISOString().split('T')[0]}" />
           </div>
-          <div class="form-group" style="grid-column:1/-1">
-            <label>Produto Final</label>
-            <select id="ap-produto-sel" onchange="Acoes.selecionarProdutoFinal()">
-              <option value="">-- Selecione primeiro a OP --</option>
-            </select>
+          <div class="form-group">
+            <label>Produto Final (código)</label>
+            <div class="autocomplete-wrap">
+              <input type="text" id="ap-prod-cod" placeholder="Buscar por código..." oninput="debounce(()=>Autocomplete.buscarFinais('ap-prod-cod','ap-prod-desc'),'ap-cod')" />
+              <div class="autocomplete-lista" id="auto-ap-prod-cod"></div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Produto Final (descrição)</label>
+            <div class="autocomplete-wrap">
+              <input type="text" id="ap-prod-desc" placeholder="Buscar por descrição..." oninput="debounce(()=>Autocomplete.buscarFinais('ap-prod-desc','ap-prod-cod'),'ap-desc')" />
+              <div class="autocomplete-lista" id="auto-ap-prod-desc"></div>
+            </div>
           </div>
           <div class="form-group">
             <label>Quantidade Produzida (unidades)</label>
@@ -360,8 +376,9 @@ const Telas = {
         <div id="ap-msg" style="margin-top:12px;font-size:14px"></div>
       </div>
     `;
+    Autocomplete._produtosFinais = produtosFinais;
     Autocomplete._produtosTodos = produtos;
-    if (opPreSelecionada) Acoes.filtrarProdutosFinaisSelect();
+    if (opPreSelecionada) Acoes.filtrarProdutosFinais();
   },
 
   // ==================== PRODUTOS ====================
@@ -696,35 +713,31 @@ const Acoes = {
       msg.innerHTML = `<span class="msg-ok">✅ Recebimento registrado! OP gerada: <strong>${r.numero_op}</strong></span>`;
       Toast.show('OP ' + r.numero_op + ' criada com sucesso!');
       Autocomplete._recSelId = null;
-      document.getElementById('rec-produto-sel').value = '';
-      document.getElementById('rec-cod-view').value = '';
-      document.getElementById('rec-desc-view').value = '';
+      document.getElementById('rec-prod-cod').value = '';
+      document.getElementById('rec-prod-desc').value = '';
       document.getElementById('rec-qtde').value = '';
       document.getElementById('rec-obs').value = '';
     } else {
       msg.innerHTML = `<span class="msg-erro">${r.erro}</span>`;
     }
   },
-
-  filtrarProdutosFinaisSelect() {
+selecionarProdutoRec() {
+    const sel = document.getElementById('rec-produto-sel');
+    const opt = sel.options[sel.selectedIndex];
+    document.getElementById('rec-cod-view').value = opt ? opt.getAttribute('data-cod') || '' : '';
+    document.getElementById('rec-desc-view').value = opt ? opt.getAttribute('data-desc') || '' : '';
+    Autocomplete._recSelId = opt ? opt.value : null;
+  },
+  filtrarProdutosFinais() {
     const sel = document.getElementById('ap-op');
     const masterID = sel.options[sel.selectedIndex]?.getAttribute('data-master');
-    const selProd = document.getElementById('ap-produto-sel');
-    Autocomplete._apSelId = null;
-    if (!masterID) {
-      selProd.innerHTML = '<option value="">-- Selecione primeiro a OP --</option>';
-      return;
-    }
-    const finais = (Autocomplete._produtosTodos || []).filter(
+    if (!masterID || !Autocomplete._produtosTodos) return;
+    Autocomplete._produtosFinais = Autocomplete._produtosTodos.filter(
       p => p.tipo === 'final' && p.produto_master_id === masterID
     );
-    selProd.innerHTML = '<option value="">-- Selecione o produto final --</option>' +
-      finais.map(p => `<option value="${p.id}">${p.codigo} — ${p.descricao}</option>`).join('');
-  },
-
-  selecionarProdutoFinal() {
-    const sel = document.getElementById('ap-produto-sel');
-    Autocomplete._apSelId = sel.value || null;
+    document.getElementById('ap-prod-cod').value = '';
+    document.getElementById('ap-prod-desc').value = '';
+    Autocomplete._apSelId = null;
   },
 
   async salvarApontamento() {
@@ -949,11 +962,14 @@ const Autocomplete = {
     ).join('');
   },
 
-  _selecionarRec(id, valPrincipal, valSecundario, inputId, outroCampoId, listId) {
-    document.getElementById(inputId).value = valPrincipal;
-    document.getElementById(outroCampoId).value = valSecundario;
-    document.getElementById(listId).innerHTML = '';
-    this._recSelId = id;
+_selecionarRec(id, valPrincipal, valSecundario, inputId, outroCampoId, listId) {
+    const inputPrincipal = document.getElementById(inputId);
+    const inputSecundario = document.getElementById(outroCampoId);
+    const lista = document.getElementById(listId);
+    if (inputPrincipal) inputPrincipal.value = valPrincipal;
+    if (inputSecundario) inputSecundario.value = valSecundario;
+    if (lista) lista.innerHTML = '';
+    Autocomplete._recSelId = id;
   },
 
   buscarFinais(inputId, outroCampoId) {
