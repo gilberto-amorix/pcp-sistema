@@ -269,6 +269,10 @@ const Telas = {
     const r = await Api.get('listarProdutos', { tipo: 'master', ativo: 'true' });
     const produtos = r.ok ? r.dados : [];
 
+    const opts = produtos.map(p => 
+      `<option value="${p.id}" data-cod="${p.codigo}" data-desc="${p.descricao}">${p.codigo} — ${p.descricao}</option>`
+    ).join('');
+
     el.innerHTML = `
       <div class="page-titulo">📦 Lançamento de Recebimento</div>
       <div class="card">
@@ -277,19 +281,20 @@ const Telas = {
             <label>Data</label>
             <input type="date" id="rec-data" value="${new Date().toISOString().split('T')[0]}" disabled />
           </div>
-          <div class="form-group">
-            <label>Produto Master (código)</label>
-            <div class="autocomplete-wrap">
-              <input type="text" id="rec-prod-cod" placeholder="Buscar por código..." oninput="debounce(()=>Autocomplete.buscar('rec-prod-cod','rec-prod-desc',${JSON.stringify(produtos)},'codigo','descricao'),'rec-cod')" />
-              <div class="autocomplete-lista" id="auto-rec-prod-cod"></div>
-            </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label>Produto Master</label>
+            <select id="rec-produto-sel" onchange="Acoes.selecionarProdutoRec()">
+              <option value="">-- Selecione o produto master --</option>
+              ${opts}
+            </select>
           </div>
           <div class="form-group">
-            <label>Produto Master (descrição)</label>
-            <div class="autocomplete-wrap">
-              <input type="text" id="rec-prod-desc" placeholder="Buscar por descrição..." oninput="debounce(()=>Autocomplete.buscar('rec-prod-desc','rec-prod-cod',${JSON.stringify(produtos)},'descricao','codigo'),'rec-desc')" />
-              <div class="autocomplete-lista" id="auto-rec-prod-desc"></div>
-            </div>
+            <label>Código selecionado</label>
+            <input type="text" id="rec-cod-view" disabled placeholder="Preenchido automaticamente" />
+          </div>
+          <div class="form-group">
+            <label>Descrição selecionada</label>
+            <input type="text" id="rec-desc-view" disabled placeholder="Preenchido automaticamente" />
           </div>
           <div class="form-group">
             <label>Quantidade Recebida (kg)</label>
@@ -306,7 +311,6 @@ const Telas = {
         <div id="rec-msg" style="margin-top:12px;font-size:14px"></div>
       </div>
     `;
-    Autocomplete._produtosRec = produtos;
   },
 
   // ==================== APONTAMENTO ====================
@@ -717,7 +721,13 @@ const Acoes = {
       msg.innerHTML = `<span class="msg-erro">${r.erro}</span>`;
     }
   },
-
+selecionarProdutoRec() {
+    const sel = document.getElementById('rec-produto-sel');
+    const opt = sel.options[sel.selectedIndex];
+    document.getElementById('rec-cod-view').value = opt ? opt.getAttribute('data-cod') || '' : '';
+    document.getElementById('rec-desc-view').value = opt ? opt.getAttribute('data-desc') || '' : '';
+    Autocomplete._recSelId = opt ? opt.value : null;
+  },
   filtrarProdutosFinais() {
     const sel = document.getElementById('ap-op');
     const masterID = sel.options[sel.selectedIndex]?.getAttribute('data-master');
