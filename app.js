@@ -783,8 +783,8 @@ selecionarProdutoRec() {
 
     const html = `
       <div class="form-grid">
-        <div class="form-group"><label>Código</label>
-          <input id="mp-cod" value="${p.codigo||''}" placeholder="Ex: PROD001" /></div>
+        <div class="form-group"><label>Código <span style="color:var(--text-soft);font-size:11px">(deixe vazio para gerar automático)</span></label>
+  <input id="mp-cod" value="${p.codigo||''}" placeholder="Ex: 7891234 ou deixe vazio" /></div>
         <div class="form-group"><label>Descrição</label>
           <input id="mp-desc" value="${p.descricao||''}" /></div>
         <div class="form-group"><label>Tipo</label>
