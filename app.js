@@ -314,7 +314,7 @@ const Telas = {
   },
 
   // ==================== APONTAMENTO ====================
-  async apontamento(opPreSelecionada = null) {
+ async apontamento(opPreSelecionada = null) {
     const el = document.getElementById('tela-apontamento');
     const [rOPs, rProds] = await Promise.all([
       Api.get('listarOPs', { status: 'Não Iniciado,Em Produção' }),
@@ -322,11 +322,10 @@ const Telas = {
     ]);
     const ops = rOPs.ok ? rOPs.dados : [];
     const produtos = rProds.ok ? rProds.dados : [];
-    const produtosFinais = produtos.filter(p => p.tipo === 'final');
 
     const opOpts = ops.map(op => {
       const prod = produtos.find(p => p.id === op.produto_master_id);
-      return `<option value="${op.id}" data-master="${op.produto_master_id}" ${opPreSelecionada === op.id ? 'selected' : ''}>${op.numero_op} — ${prod ? prod.descricao : ''} (${dataFormatada(op.data_criacao)})</option>`;
+      return `<option value="${op.id}" data-master="${op.produto_master_id}" data-kg="${op.quantidade_recebida_kg}" ${opPreSelecionada === op.id ? 'selected' : ''}>${op.numero_op} — ${prod ? prod.descricao : ''} (${dataFormatada(op.data_criacao)})</option>`;
     }).join('');
 
     el.innerHTML = `
@@ -341,8 +340,12 @@ const Telas = {
             </select>
           </div>
           <div class="form-group">
+            <label>Quantidade Recebida na OP (kg)</label>
+            <input type="text" id="ap-kg-op" disabled placeholder="Selecione a OP acima" style="font-size:18px;font-weight:700;color:var(--azul-light)" />
+          </div>
+          <div class="form-group">
             <label>Tipo de Apontamento</label>
-            <select id="ap-tipo">
+            <select id="ap-tipo" onchange="Acoes.calcularPerdaGanho()">
               <option value="Parcial">Parcial</option>
               <option value="Final">Final (Encerra a OP)</option>
             </select>
@@ -359,54 +362,40 @@ const Telas = {
           </div>
           <div class="form-group">
             <label>Quantidade Produzida (unidades)</label>
-            <input type="number" id="ap-qtde" min="1" placeholder="Ex: 50" />
+            <input type="number" id="ap-qtde" min="1" placeholder="Ex: 50" oninput="Acoes.calcularPerdaGanho()" />
           </div>
         </div>
-        <div class="form-acoes">
+
+        <div id="ap-resultado" style="display:none;margin-top:16px;padding:16px;border-radius:8px;border:1px solid var(--border)">
+          <div style="font-size:13px;color:var(--text-soft);font-weight:600;margin-bottom:10px">📊 RESULTADO DO APONTAMENTO FINAL</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+            <div style="background:var(--bg3);border-radius:8px;padding:14px;text-align:center">
+              <div style="font-size:11px;color:var(--text-soft);margin-bottom:4px">RECEBIDO</div>
+              <div id="ap-res-recebido" style="font-size:20px;font-weight:800;color:var(--azul-light)">—</div>
+            </div>
+            <div style="background:var(--bg3);border-radius:8px;padding:14px;text-align:center">
+              <div style="font-size:11px;color:var(--text-soft);margin-bottom:4px">PRODUZIDO</div>
+              <div id="ap-res-produzido" style="font-size:20px;font-weight:800;color:var(--verde-light)">—</div>
+            </div>
+            <div style="background:var(--bg3);border-radius:8px;padding:14px;text-align:center">
+              <div style="font-size:11px;color:var(--text-soft);margin-bottom:4px">DIFERENÇA</div>
+              <div id="ap-res-diff" style="font-size:20px;font-weight:800">—</div>
+            </div>
+            <div style="background:var(--bg3);border-radius:8px;padding:14px;text-align:center">
+              <div style="font-size:11px;color:var(--text-soft);margin-bottom:4px">PERCENTUAL</div>
+              <div id="ap-res-pct" style="font-size:20px;font-weight:800">—</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-acoes" style="margin-top:16px">
           <button class="btn btn-verde" onclick="Acoes.salvarApontamento()">✅ Registrar Apontamento</button>
         </div>
         <div id="ap-msg" style="margin-top:12px;font-size:14px"></div>
       </div>
     `;
-    Autocomplete._produtosFinais = produtosFinais;
     Autocomplete._produtosTodos = produtos;
     if (opPreSelecionada) Acoes.filtrarProdutosFinaisSelect();
-  },
-  // ==================== PRODUTOS ====================
-  async produtos() {
-    const el = document.getElementById('tela-produtos');
-    el.innerHTML = '<div class="page-titulo">🏷️ Cadastro de Produtos</div><div class="text-soft">Carregando...</div>';
-    const r = await Api.get('listarProdutos');
-    if (!r.ok) { el.innerHTML = `<p class="text-vermelho">${r.erro}</p>`; return; }
-    const lista = r.dados;
-    const masters = lista.filter(p => p.tipo === 'master');
-
-    el.innerHTML = `
-      <div class="page-titulo">🏷️ Cadastro de Produtos</div>
-      <div class="barra-topo">
-        <input class="input-busca" id="busca-produtos" placeholder="🔍 Buscar produto..." oninput="filtrarTabela('busca-produtos','tabela-produtos')" />
-        <button class="btn btn-verde btn-sm" onclick="Acoes.abrirModalProduto(null,${JSON.stringify(masters).replace(/"/g,'&quot;')})">+ Novo Produto</button>
-      </div>
-      <div class="card tabela-wrap">
-        <table id="tabela-produtos">
-          <thead><tr>
-            <th>Código</th><th>Descrição</th><th>Tipo</th><th>Peso/Emb</th><th>Status</th><th>Ações</th>
-          </tr></thead>
-          <tbody>
-            ${lista.map(p => `<tr>
-              <td>${p.codigo}</td>
-              <td>${p.descricao}</td>
-              <td><span class="badge ${p.tipo==='master'?'badge-azul':'badge-verde'}">${p.tipo}</span></td>
-              <td>${p.tipo==='master'?(p.peso_master_kg+' kg'):(p.peso_final||'-')}</td>
-              <td>${p.ativo=='true'||p.ativo=='TRUE'?'<span class="badge badge-verde">Ativo</span>':'<span class="badge badge-cinza">Inativo</span>'}</td>
-              <td>
-                <button class="btn-icon" title="Editar" onclick='Acoes.abrirModalProduto(${JSON.stringify(p).replace(/'/g,"&#39;")},${JSON.stringify(masters).replace(/'/g,"&#39;")})'>✏️</button>
-              </td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>
-    `;
   },
 
   // ==================== FUNCIONÁRIOS ====================
@@ -730,11 +719,19 @@ selecionarProdutoRec() {
     document.getElementById('ap-prod-desc').value = '';
     Autocomplete._apSelId = null;
   },
-  filtrarProdutosFinaisSelect() {
+ filtrarProdutosFinaisSelect() {
     const sel = document.getElementById('ap-op');
-    const masterID = sel.options[sel.selectedIndex]?.getAttribute('data-master');
+    const opt = sel.options[sel.selectedIndex];
+    const masterID = opt?.getAttribute('data-master');
+    const kg = opt?.getAttribute('data-kg') || '';
     const selProd = document.getElementById('ap-produto-sel');
+    const kgInput = document.getElementById('ap-kg-op');
+
     Autocomplete._apSelId = null;
+    Autocomplete._apKgOp = parseFloat(kg) || 0;
+
+    if (kgInput) kgInput.value = kg ? kg + ' kg' : '';
+
     if (!masterID) {
       selProd.innerHTML = '<option value="">-- Selecione primeiro a OP --</option>';
       return;
@@ -742,15 +739,54 @@ selecionarProdutoRec() {
     const finais = (Autocomplete._produtosTodos || []).filter(
       p => p.tipo === 'final' && p.produto_master_id === masterID
     );
+    Autocomplete._produtosFinaisLista = finais;
     selProd.innerHTML = '<option value="">-- Selecione o produto final --</option>' +
-      finais.map(p => `<option value="${p.id}">${p.codigo} — ${p.descricao}</option>`).join('');
+      finais.map(p => `<option value="${p.id}" data-peso="${p.peso_final||0}">${p.codigo} — ${p.descricao}</option>`).join('');
+
+    Acoes.calcularPerdaGanho();
   },
 
-  selecionarProdutoFinal() {
+ selecionarProdutoFinal() {
     const sel = document.getElementById('ap-produto-sel');
     Autocomplete._apSelId = sel.value || null;
+    const opt = sel.options[sel.selectedIndex];
+    Autocomplete._apPesoFinal = opt ? parseFloat(opt.getAttribute('data-peso')) || 0 : 0;
+    Acoes.calcularPerdaGanho();
   },
+calcularPerdaGanho() {
+    const tipo = document.getElementById('ap-tipo')?.value;
+    const qtde = parseFloat(document.getElementById('ap-qtde')?.value) || 0;
+    const kgOp = Autocomplete._apKgOp || 0;
+    const pesoFinal = Autocomplete._apPesoFinal || 0;
+    const resultado = document.getElementById('ap-resultado');
 
+    if (tipo !== 'Final' || !resultado) {
+      if (resultado) resultado.style.display = 'none';
+      return;
+    }
+
+    if (qtde <= 0 || pesoFinal <= 0 || kgOp <= 0) {
+      resultado.style.display = 'none';
+      return;
+    }
+
+    const produzidoKg = qtde * pesoFinal;
+    const diff = produzidoKg - kgOp;
+    const pct = ((diff / kgOp) * 100);
+    const isPerda = diff < 0;
+    const cor = isPerda ? 'var(--vermelho)' : 'var(--verde-light)';
+    const icone = isPerda ? '⚠️ Perda' : '✅ Ganho';
+
+    document.getElementById('ap-res-recebido').textContent = kgOp.toFixed(2) + ' kg';
+    document.getElementById('ap-res-produzido').textContent = produzidoKg.toFixed(2) + ' kg';
+    document.getElementById('ap-res-diff').textContent = (isPerda ? '' : '+') + diff.toFixed(2) + ' kg';
+    document.getElementById('ap-res-diff').style.color = cor;
+    document.getElementById('ap-res-pct').textContent = (isPerda ? '' : '+') + pct.toFixed(1) + '%';
+    document.getElementById('ap-res-pct').style.color = cor;
+    document.getElementById('ap-res-diff').previousElementSibling.textContent = icone;
+
+    resultado.style.display = '';
+  },
   async salvarApontamento() {
     const opId = document.getElementById('ap-op').value;
     const tipo = document.getElementById('ap-tipo').value;
@@ -957,6 +993,8 @@ selecionarProdutoRec() {
 const Autocomplete = {
   _recSelId: null,
   _apSelId: null,
+  _apKgOp: 0,        // ← adicione esta linha
+  _apPesoFinal: 0,   // ← e esta linha
   _produtosRec: [],
   _produtosFinais: [],
   _produtosTodos: [],
