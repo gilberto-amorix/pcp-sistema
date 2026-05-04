@@ -21,37 +21,33 @@ const Estado = {
 const Api = {
   async get(action, params = {}) {
     Spinner.mostrar();
-    return new Promise((resolve) => {
-      const cbName = 'cb_' + Date.now();
-      const qs = new URLSearchParams({ action, token: Estado.token, ...params, callback: cbName }).toString();
-      const script = document.createElement('script');
-      script.src = `${API_URL}?${qs}`;
-      window[cbName] = (data) => {
-        resolve(data);
-        delete window[cbName];
-        if (document.body.contains(script)) document.body.removeChild(script);
-        Spinner.ocultar();
-      };
-      script.onerror = () => { resolve({ ok: false, erro: 'Erro de conexão.' }); Spinner.ocultar(); };
-      document.body.appendChild(script);
-    });
+    try {
+      const qs = new URLSearchParams({ 
+        action, token: Estado.token, ...params 
+      }).toString();
+      const r = await fetch(`${API_URL}?${qs}`, { redirect: 'follow' });
+      const text = await r.text();
+      return JSON.parse(text);
+    } catch(e) { 
+      return { ok: false, erro: 'Erro de conexão.' }; 
+    } finally { 
+      Spinner.ocultar(); 
+    }
   },
   async post(action, body = {}) {
     Spinner.mostrar();
-    return new Promise((resolve) => {
-      const cbName = 'cb_' + Date.now();
-      const params = new URLSearchParams({ action, token: Estado.token, ...body, callback: cbName }).toString();
-      const script = document.createElement('script');
-      script.src = `${API_URL}?${params}`;
-      window[cbName] = (data) => {
-        resolve(data);
-        delete window[cbName];
-        if (document.body.contains(script)) document.body.removeChild(script);
-        Spinner.ocultar();
-      };
-      script.onerror = () => { resolve({ ok: false, erro: 'Erro de conexão.' }); Spinner.ocultar(); };
-      document.body.appendChild(script);
-    });
+    try {
+      const qs = new URLSearchParams({ 
+        action, token: Estado.token, ...body 
+      }).toString();
+      const r = await fetch(`${API_URL}?${qs}`, { redirect: 'follow' });
+      const text = await r.text();
+      return JSON.parse(text);
+    } catch(e) { 
+      return { ok: false, erro: 'Erro de conexão.' }; 
+    } finally { 
+      Spinner.ocultar(); 
+    }
   }
 };
 
