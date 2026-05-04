@@ -19,42 +19,45 @@ const Estado = {
 // API — Comunicação com o Apps Script (JSONP)
 // ============================================================
 const Api = {
-  async get(action, params = {}) {
-    Spinner.mostrar();
+  _call(action, params) {
     return new Promise((resolve) => {
-      const cbName = 'cb_' + Date.now();
-      const qs = new URLSearchParams({ action, token: Estado.token, ...params, callback: cbName }).toString();
-      const script = document.createElement('script');
-      script.src = `${API_URL}?${qs}`;
+      const cbName = 'pcp_' + Math.random().toString(36).slice(2);
+      const qs = new URLSearchParams({ 
+        action, token: Estado.token || '', ...params, callback: cbName 
+      }).toString();
+      const s = document.createElement('script');
+      s.src = `${API_URL}?${qs}`;
       window[cbName] = (data) => {
         resolve(data);
         delete window[cbName];
-        if (document.body.contains(script)) document.body.removeChild(script);
+        try { document.body.removeChild(s); } catch(e) {}
         Spinner.ocultar();
       };
-      script.onerror = () => { resolve({ ok: false, erro: 'Erro de conexão.' }); Spinner.ocultar(); };
-      document.body.appendChild(script);
+      s.onerror = () => {
+        resolve({ ok: false, erro: 'Erro de conexão.' });
+        delete window[cbName];
+        try { document.body.removeChild(s); } catch(e) {}
+        Spinner.ocultar();
+      };
+      setTimeout(() => {
+        if (window[cbName]) {
+          resolve({ ok: false, erro: 'Tempo esgotado.' });
+          delete window[cbName];
+          try { document.body.removeChild(s); } catch(e) {}
+          Spinner.ocultar();
+        }
+      }, 15000);
+      Spinner.mostrar();
+      document.body.appendChild(s);
     });
   },
+  async get(action, params = {}) {
+    return this._call(action, params);
+  },
   async post(action, body = {}) {
-    Spinner.mostrar();
-    return new Promise((resolve) => {
-      const cbName = 'cb_' + Date.now();
-      const params = new URLSearchParams({ action, token: Estado.token, ...body, callback: cbName }).toString();
-      const script = document.createElement('script');
-      script.src = `${API_URL}?${params}`;
-      window[cbName] = (data) => {
-        resolve(data);
-        delete window[cbName];
-        if (document.body.contains(script)) document.body.removeChild(script);
-        Spinner.ocultar();
-      };
-      script.onerror = () => { resolve({ ok: false, erro: 'Erro de conexão.' }); Spinner.ocultar(); };
-      document.body.appendChild(script);
-    });
+    return this._call(action, body);
   }
 };
-
 // ============================================================
 // UTILITÁRIOS
 // ============================================================
