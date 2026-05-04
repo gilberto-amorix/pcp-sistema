@@ -2,7 +2,7 @@
 // PCP — app.js — Lógica completa do frontend
 // ============================================================
 
-const API_URL = 'https://script.google.com/macros/s/AKfycbxGobGm5H2Mee6IoP-smUcBovlmEs15_lhHgg-yyFKNErmkQKs7K8atb06ph-VViT5Q/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbzlR6Ngvv0uLDsllGlGVme2gQ9lVClxipKr8pFoYncoy_j6zvVloqBvqPWG5q0eEiVR/exec';
 
 // ============================================================
 // ESTADO GLOBAL
