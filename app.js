@@ -2,7 +2,6 @@
 // PCP — app.js — Lógica completa do frontend
 // ============================================================
 
-// ⚠️ EDITE ESTA URL com a URL do seu Google Apps Script publicado:
 const API_URL = 'https://script.google.com/macros/s/AKfycbxGobGm5H2Mee6IoP-smUcBovlmEs15_lhHgg-yyFKNErmkQKs7K8atb06ph-VViT5Q/exec';
 
 // ============================================================
@@ -17,32 +16,42 @@ const Estado = {
 };
 
 // ============================================================
-// API — Comunicação com o Apps Script
+// API — Comunicação com o Apps Script (JSONP)
 // ============================================================
 const Api = {
   async get(action, params = {}) {
     Spinner.mostrar();
-    try {
-      const qs = new URLSearchParams({ action, token: Estado.token, ...params }).toString();
-      const r = await fetch(`${API_URL}?${qs}`, {
-  redirect: 'follow'
-});
-      return await r.json();
-    } catch(e) { return { ok: false, erro: 'Erro de conexão.' }; }
-    finally { Spinner.ocultar(); }
+    return new Promise((resolve) => {
+      const cbName = 'cb_' + Date.now();
+      const qs = new URLSearchParams({ action, token: Estado.token, ...params, callback: cbName }).toString();
+      const script = document.createElement('script');
+      script.src = `${API_URL}?${qs}`;
+      window[cbName] = (data) => {
+        resolve(data);
+        delete window[cbName];
+        if (document.body.contains(script)) document.body.removeChild(script);
+        Spinner.ocultar();
+      };
+      script.onerror = () => { resolve({ ok: false, erro: 'Erro de conexão.' }); Spinner.ocultar(); };
+      document.body.appendChild(script);
+    });
   },
   async post(action, body = {}) {
     Spinner.mostrar();
-    try {
-      const r = await fetch(API_URL, {
-  method: 'POST',
-  headers: { 'Content-Type': 'text/plain' },
-  body: JSON.stringify({ action, token: Estado.token, ...body }),
-  redirect: 'follow'
-});
-      return await r.json();
-    } catch(e) { return { ok: false, erro: 'Erro de conexão.' }; }
-    finally { Spinner.ocultar(); }
+    return new Promise((resolve) => {
+      const cbName = 'cb_' + Date.now();
+      const params = new URLSearchParams({ action, token: Estado.token, ...body, callback: cbName }).toString();
+      const script = document.createElement('script');
+      script.src = `${API_URL}?${params}`;
+      window[cbName] = (data) => {
+        resolve(data);
+        delete window[cbName];
+        if (document.body.contains(script)) document.body.removeChild(script);
+        Spinner.ocultar();
+      };
+      script.onerror = () => { resolve({ ok: false, erro: 'Erro de conexão.' }); Spinner.ocultar(); };
+      document.body.appendChild(script);
+    });
   }
 };
 
@@ -126,6 +135,23 @@ function debounce(fn, id, ms = 300) {
 }
 
 // ============================================================
+// CARDS MOBILE
+// ============================================================
+function gerarCardsTabela(itens, campos, acaoHtml) {
+  if (!itens || itens.length === 0) return '<div class="card-lista" style="display:flex"><p class="text-soft">Nenhum registro encontrado.</p></div>';
+  const cards = itens.map(item => {
+    const linhas = campos.map(c => `
+      <div class="card-item-row">
+        <span class="label">${c.label}</span>
+        <span class="valor">${c.render ? c.render(item) : (item[c.campo] || '—')}</span>
+      </div>`).join('');
+    const acao = acaoHtml ? acaoHtml(item) : '';
+    return `<div class="card-item">${linhas}${acao ? `<div class="card-item-acoes">${acao}</div>` : ''}</div>`;
+  }).join('');
+  return `<div class="card-lista">${cards}</div>`;
+}
+
+// ============================================================
 // APP — Navegação e autenticação
 // ============================================================
 const App = {
@@ -135,9 +161,7 @@ const App = {
     const msg = document.getElementById('login-msg');
     if (!email || !senha) { msg.innerHTML = '<span class="msg-erro">Preencha e-mail e senha.</span>'; return; }
     msg.innerHTML = '';
-    Spinner.mostrar();
     const r = await Api.post('login', { email, senha });
-    Spinner.ocultar();
     if (!r.ok) { msg.innerHTML = `<span class="msg-erro">${r.erro}</span>`; return; }
 
     Estado.token  = r.token;
@@ -176,23 +200,20 @@ const App = {
     document.getElementById('tela-login').style.display = 'none';
     document.getElementById('app').style.display = 'flex';
     document.getElementById('sidebar-user').textContent = Estado.nome;
-
-    // Mostrar/ocultar itens admin
     document.querySelectorAll('.admin-only').forEach(el => {
       el.style.display = Estado.perfil === 'admin' ? 'flex' : 'none';
     });
-
     this.navegar('dashboard');
   },
 
   navegar(tela) {
-    // Verificar acesso
+    App.fecharMenuMobile();
+
     const adminOnly = ['produtos', 'funcionarios', 'usuarios', 'despesas', 'dre'];
     if (adminOnly.includes(tela) && Estado.perfil !== 'admin') {
       Toast.show('Acesso restrito.', 'erro'); return;
     }
 
-    // Esconder todas as telas
     document.querySelectorAll('#main-content > div').forEach(d => d.style.display = 'none');
     document.querySelectorAll('.nav-item').forEach(a => a.classList.remove('ativo'));
 
@@ -204,7 +225,6 @@ const App = {
 
     Estado.telaAtual = tela;
 
-    // Renderizar tela
     const render = {
       dashboard:    Telas.dashboard,
       recebimento:  Telas.recebimento,
@@ -220,6 +240,18 @@ const App = {
 
   toggleSidebar() {
     document.getElementById('sidebar').classList.toggle('collapsed');
+  },
+
+  abrirMenuMobile() {
+    document.getElementById('sidebar').classList.add('aberta');
+    document.getElementById('sidebar-overlay').classList.add('visivel');
+  },
+
+  fecharMenuMobile() {
+    const s = document.getElementById('sidebar');
+    const o = document.getElementById('sidebar-overlay');
+    if (s) s.classList.remove('aberta');
+    if (o) o.classList.remove('visivel');
   }
 };
 
@@ -240,7 +272,6 @@ const Telas = {
       const r = await Api.get('dashboardAdmin', { mes, ano });
       if (!r.ok) { el.innerHTML = `<p class="text-vermelho">${r.erro}</p>`; return; }
       el.innerHTML = renderDashboardAdmin(r, mes, ano);
-      // Listener de período
       document.getElementById('sel-mes').onchange = Telas._atualizarDashAdmin;
       document.getElementById('sel-ano').onchange = Telas._atualizarDashAdmin;
     } else {
@@ -269,7 +300,7 @@ const Telas = {
     const r = await Api.get('listarProdutos', { tipo: 'master', ativo: 'true' });
     const produtos = r.ok ? r.dados : [];
 
-    const opts = produtos.map(p => 
+    const opts = produtos.map(p =>
       `<option value="${p.id}" data-cod="${p.codigo}" data-desc="${p.descricao}">${p.codigo} — ${p.descricao}</option>`
     ).join('');
 
@@ -300,7 +331,7 @@ const Telas = {
             <label>Quantidade Recebida (kg)</label>
             <input type="number" id="rec-qtde" min="0.01" step="0.01" placeholder="Ex: 25" />
           </div>
-          <div class="form-group" style="grid-column: 1/-1">
+          <div class="form-group" style="grid-column:1/-1">
             <label>Observações (opcional)</label>
             <input type="text" id="rec-obs" placeholder="..." />
           </div>
@@ -314,7 +345,7 @@ const Telas = {
   },
 
   // ==================== APONTAMENTO ====================
- async apontamento(opPreSelecionada = null) {
+  async apontamento(opPreSelecionada = null) {
     const el = document.getElementById('tela-apontamento');
     const [rOPs, rProds] = await Promise.all([
       Api.get('listarOPs', { status: 'Não Iniciado,Em Produção' }),
@@ -368,7 +399,7 @@ const Telas = {
 
         <div id="ap-resultado" style="display:none;margin-top:16px;padding:16px;border-radius:8px;border:1px solid var(--border)">
           <div style="font-size:13px;color:var(--text-soft);font-weight:600;margin-bottom:10px">📊 RESULTADO DO APONTAMENTO FINAL</div>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
             <div style="background:var(--bg3);border-radius:8px;padding:14px;text-align:center">
               <div style="font-size:11px;color:var(--text-soft);margin-bottom:4px">RECEBIDO</div>
               <div id="ap-res-recebido" style="font-size:20px;font-weight:800;color:var(--azul-light)">—</div>
@@ -378,7 +409,7 @@ const Telas = {
               <div id="ap-res-produzido" style="font-size:20px;font-weight:800;color:var(--verde-light)">—</div>
             </div>
             <div style="background:var(--bg3);border-radius:8px;padding:14px;text-align:center">
-              <div style="font-size:11px;color:var(--text-soft);margin-bottom:4px">DIFERENÇA</div>
+              <div id="ap-res-diff-label" style="font-size:11px;color:var(--text-soft);margin-bottom:4px">DIFERENÇA</div>
               <div id="ap-res-diff" style="font-size:20px;font-weight:800">—</div>
             </div>
             <div style="background:var(--bg3);border-radius:8px;padding:14px;text-align:center">
@@ -398,6 +429,47 @@ const Telas = {
     if (opPreSelecionada) Acoes.filtrarProdutosFinaisSelect();
   },
 
+  // ==================== PRODUTOS ====================
+  async produtos() {
+    const el = document.getElementById('tela-produtos');
+    el.innerHTML = '<div class="page-titulo">🏷️ Cadastro de Produtos</div><div class="text-soft">Carregando...</div>';
+    const r = await Api.get('listarProdutos');
+    if (!r.ok) { el.innerHTML = `<p class="text-vermelho">${r.erro}</p>`; return; }
+    const lista = r.dados;
+    const masters = lista.filter(p => p.tipo === 'master');
+
+    const cards = gerarCardsTabela(lista, [
+      { label: 'Código', campo: 'codigo' },
+      { label: 'Descrição', campo: 'descricao' },
+      { label: 'Tipo', render: p => `<span class="badge ${p.tipo==='master'?'badge-azul':'badge-verde'}">${p.tipo}</span>` },
+      { label: 'Peso/Emb', render: p => p.tipo==='master'?(p.peso_master_kg+' kg'):(p.peso_final||'-') },
+      { label: 'Status', render: p => p.ativo=='true'||p.ativo=='TRUE'?'<span class="badge badge-verde">Ativo</span>':'<span class="badge badge-cinza">Inativo</span>' }
+    ], p => `<button class="btn btn-secondary btn-sm" onclick='Acoes.abrirModalProduto(${JSON.stringify(p).replace(/'/g,"&#39;")},${JSON.stringify(masters).replace(/'/g,"&#39;")})'>✏️ Editar</button>`);
+
+    el.innerHTML = `
+      <div class="page-titulo">🏷️ Cadastro de Produtos</div>
+      <div class="barra-topo">
+        <input class="input-busca" id="busca-produtos" placeholder="🔍 Buscar produto..." oninput="filtrarTabela('busca-produtos','tabela-produtos')" />
+        <button class="btn btn-verde btn-sm" onclick="Acoes.abrirModalProduto(null,${JSON.stringify(masters).replace(/"/g,'&quot;')})">+ Novo Produto</button>
+      </div>
+      <div class="card tabela-wrap">
+        <table id="tabela-produtos">
+          <thead><tr><th>Código</th><th>Descrição</th><th>Tipo</th><th>Peso/Emb</th><th>Status</th><th>Ações</th></tr></thead>
+          <tbody>
+            ${lista.map(p => `<tr>
+              <td>${p.codigo}</td><td>${p.descricao}</td>
+              <td><span class="badge ${p.tipo==='master'?'badge-azul':'badge-verde'}">${p.tipo}</span></td>
+              <td>${p.tipo==='master'?(p.peso_master_kg+' kg'):(p.peso_final||'-')}</td>
+              <td>${p.ativo=='true'||p.ativo=='TRUE'?'<span class="badge badge-verde">Ativo</span>':'<span class="badge badge-cinza">Inativo</span>'}</td>
+              <td><button class="btn-icon" onclick='Acoes.abrirModalProduto(${JSON.stringify(p).replace(/'/g,"&#39;")},${JSON.stringify(masters).replace(/'/g,"&#39;")})'>✏️</button></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+        ${cards}
+      </div>
+    `;
+  },
+
   // ==================== FUNCIONÁRIOS ====================
   async funcionarios() {
     const el = document.getElementById('tela-funcionarios');
@@ -405,6 +477,13 @@ const Telas = {
     const r = await Api.get('listarFuncionarios');
     if (!r.ok) { el.innerHTML = `<p class="text-vermelho">${r.erro}</p>`; return; }
     const lista = r.dados;
+
+    const cards = gerarCardsTabela(lista, [
+      { label: 'Código', campo: 'codigo_sequencial' },
+      { label: 'Nome', campo: 'nome' },
+      { label: 'Salário+Encargos', render: f => moeda(f.salario_encargos) },
+      { label: 'Status', render: f => f.ativo=='true'||f.ativo=='TRUE'?'<span class="badge badge-verde">Ativo</span>':'<span class="badge badge-cinza">Inativo</span>' }
+    ], f => `<button class="btn btn-secondary btn-sm" onclick='Acoes.abrirModalFuncionario(${JSON.stringify(f).replace(/'/g,"&#39;")})'>✏️ Editar</button>`);
 
     el.innerHTML = `
       <div class="page-titulo">👷 Cadastro de Funcionários</div>
@@ -417,14 +496,14 @@ const Telas = {
           <thead><tr><th>Código</th><th>Nome</th><th>Salário+Encargos</th><th>Status</th><th>Ações</th></tr></thead>
           <tbody>
             ${lista.map(f => `<tr>
-              <td>${f.codigo_sequencial}</td>
-              <td>${f.nome}</td>
+              <td>${f.codigo_sequencial}</td><td>${f.nome}</td>
               <td>${moeda(f.salario_encargos)}</td>
               <td>${f.ativo=='true'||f.ativo=='TRUE'?'<span class="badge badge-verde">Ativo</span>':'<span class="badge badge-cinza">Inativo</span>'}</td>
               <td><button class="btn-icon" onclick='Acoes.abrirModalFuncionario(${JSON.stringify(f).replace(/'/g,"&#39;")})'>✏️</button></td>
             </tr>`).join('')}
           </tbody>
         </table>
+        ${cards}
       </div>
     `;
   },
@@ -437,6 +516,13 @@ const Telas = {
     if (!r.ok) { el.innerHTML = `<p class="text-vermelho">${r.erro}</p>`; return; }
     const lista = r.dados;
 
+    const cards = gerarCardsTabela(lista, [
+      { label: 'Nome', campo: 'nome' },
+      { label: 'E-mail', campo: 'email' },
+      { label: 'Perfil', render: u => `<span class="badge ${u.perfil==='admin'?'badge-vermelho':'badge-azul'}">${u.perfil}</span>` },
+      { label: 'Status', render: u => u.ativo=='true'||u.ativo=='TRUE'?'<span class="badge badge-verde">Ativo</span>':'<span class="badge badge-cinza">Inativo</span>' }
+    ], u => `<button class="btn btn-secondary btn-sm" onclick='Acoes.abrirModalUsuario(${JSON.stringify(u).replace(/'/g,"&#39;")})'>✏️ Editar</button>`);
+
     el.innerHTML = `
       <div class="page-titulo">👤 Cadastro de Usuários</div>
       <div class="barra-topo">
@@ -448,14 +534,14 @@ const Telas = {
           <thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Status</th><th>Ações</th></tr></thead>
           <tbody>
             ${lista.map(u => `<tr>
-              <td>${u.nome}</td>
-              <td>${u.email}</td>
+              <td>${u.nome}</td><td>${u.email}</td>
               <td><span class="badge ${u.perfil==='admin'?'badge-vermelho':'badge-azul'}">${u.perfil}</span></td>
               <td>${u.ativo=='true'||u.ativo=='TRUE'?'<span class="badge badge-verde">Ativo</span>':'<span class="badge badge-cinza">Inativo</span>'}</td>
               <td><button class="btn-icon" onclick='Acoes.abrirModalUsuario(${JSON.stringify(u).replace(/'/g,"&#39;")})'>✏️</button></td>
             </tr>`).join('')}
           </tbody>
         </table>
+        ${cards}
       </div>
     `;
   },
@@ -464,9 +550,7 @@ const Telas = {
   async despesas() {
     const el = document.getElementById('tela-despesas');
     const hoje = new Date();
-    const mes = hoje.getMonth() + 1;
-    const ano = hoje.getFullYear();
-    await Telas._carregarDespesas(el, mes, ano);
+    await Telas._carregarDespesas(el, hoje.getMonth() + 1, hoje.getFullYear());
   },
 
   async _carregarDespesas(el, mes, ano) {
@@ -474,6 +558,13 @@ const Telas = {
     const r = await Api.get('listarDespesas', { mes, ano });
     if (!r.ok) { el.innerHTML = `<p class="text-vermelho">${r.erro}</p>`; return; }
     const lista = r.dados;
+
+    const cards = gerarCardsTabela(lista, [
+      { label: 'Descrição', campo: 'descricao' },
+      { label: 'Categoria', campo: 'categoria' },
+      { label: 'Data', render: d => dataFormatada(d.data_competencia) },
+      { label: 'Valor', render: d => moeda(d.valor) }
+    ], d => `<button class="btn btn-secondary btn-sm" onclick='Acoes.abrirModalDespesa(${JSON.stringify(d).replace(/'/g,"&#39;")})'>✏️ Editar</button>`);
 
     el.innerHTML = `
       <div class="page-titulo">💸 Despesas Operacionais</div>
@@ -489,14 +580,14 @@ const Telas = {
           <thead><tr><th>Descrição</th><th>Categoria</th><th>Data</th><th>Valor</th><th>Ações</th></tr></thead>
           <tbody>
             ${lista.map(d => `<tr>
-              <td>${d.descricao}</td>
-              <td>${d.categoria||'-'}</td>
+              <td>${d.descricao}</td><td>${d.categoria||'-'}</td>
               <td>${dataFormatada(d.data_competencia)}</td>
               <td>${moeda(d.valor)}</td>
               <td><button class="btn-icon" onclick='Acoes.abrirModalDespesa(${JSON.stringify(d).replace(/'/g,"&#39;")})'>✏️</button></td>
             </tr>`).join('')}
           </tbody>
         </table>
+        ${cards}
       </div>
       <div class="card" style="text-align:right">
         <strong>Total do período: <span class="text-verde">${moeda(lista.reduce((a,d)=>a+(parseFloat(d.valor)||0),0))}</span></strong>
@@ -595,6 +686,14 @@ function seletorMesAno(mes, ano, idMes, idAno, callback) {
 // RENDERS DO DASHBOARD
 // ============================================================
 function renderDashboardOperador(r) {
+  const cardsOPs = gerarCardsTabela(r.pendentes, [
+    { label: 'Nº OP', campo: 'numero_op' },
+    { label: 'Produto', campo: 'produto_descricao' },
+    { label: 'Data', render: op => dataFormatada(op.data_criacao) },
+    { label: 'Qtde (kg)', campo: 'quantidade_recebida_kg' },
+    { label: 'Status', render: op => badgeStatus(op.status) }
+  ], op => `<button class="btn btn-sm btn-verde" onclick="App.navegar('apontamento');setTimeout(()=>Telas.apontamento('${op.id}'),100)">Apontar</button>`);
+
   return `
     <div class="page-titulo">📊 Dashboard</div>
     <div class="resumo-grid">
@@ -618,6 +717,7 @@ function renderDashboardOperador(r) {
             </tr>`).join('')}
           </tbody>
         </table>
+        ${cardsOPs}
       </div>
     </div>
   `;
@@ -638,26 +738,32 @@ function renderDashboardAdmin(r, mes, ano) {
     <div class="card">
       <div class="card-titulo">💰 Faturamento do Período</div>
       <div style="font-size:28px;font-weight:800;color:var(--verde-light);margin-bottom:16px">${moeda(fat.total)}</div>
-      <div class="tabela-wrap">
-        <table>
-          <thead><tr><th>Produto Final</th><th>Qtde Produzida</th><th>Valor Unit.</th><th>Subtotal</th></tr></thead>
-          <tbody>
-            ${fat.breakdown.map(b=>`<tr>
-              <td>${b.produto}</td><td>${b.qtde}</td><td>${moeda(b.valor_unitario)}</td><td>${moeda(b.subtotal)}</td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
+      <div class="tabela-wrap"><table>
+        <thead><tr><th>Produto Final</th><th>Qtde Produzida</th><th>Valor Unit.</th><th>Subtotal</th></tr></thead>
+        <tbody>${fat.breakdown.map(b=>`<tr><td>${b.produto}</td><td>${b.qtde}</td><td>${moeda(b.valor_unitario)}</td><td>${moeda(b.subtotal)}</td></tr>`).join('')}</tbody>
+      </table>
+      ${gerarCardsTabela(fat.breakdown, [
+        { label: 'Produto', campo: 'produto' },
+        { label: 'Qtde', campo: 'qtde' },
+        { label: 'Valor Unit.', render: b => moeda(b.valor_unitario) },
+        { label: 'Subtotal', render: b => moeda(b.subtotal) }
+      ])}
       </div>
     </div>
     <div class="card">
       <div class="card-titulo">⚖️ Recebimento de Matéria-Prima — Total: <span class="text-verde">${rec.total_kg} kg</span></div>
-      <div id="rec-analitico-wrap">
-        <button class="btn btn-secondary btn-sm" onclick="toggleExpansivel('rec-analitico')">Ver analítico</button>
-        <div id="rec-analitico" class="expansivel-conteudo mt-16">
-          <div class="tabela-wrap"><table>
-            <thead><tr><th>Data</th><th>OP</th><th>Produto</th><th>Qtde (kg)</th></tr></thead>
-            <tbody>${rec.analitico.map(i=>`<tr><td>${dataFormatada(i.data)}</td><td>${i.numero_op}</td><td>${i.produto}</td><td>${i.qtde_kg}</td></tr>`).join('')}</tbody>
-          </table></div>
+      <button class="btn btn-secondary btn-sm" onclick="toggleExpansivel('rec-analitico')">Ver analítico</button>
+      <div id="rec-analitico" class="expansivel-conteudo mt-16">
+        <div class="tabela-wrap"><table>
+          <thead><tr><th>Data</th><th>OP</th><th>Produto</th><th>Qtde (kg)</th></tr></thead>
+          <tbody>${rec.analitico.map(i=>`<tr><td>${dataFormatada(i.data)}</td><td>${i.numero_op}</td><td>${i.produto}</td><td>${i.qtde_kg}</td></tr>`).join('')}</tbody>
+        </table>
+        ${gerarCardsTabela(rec.analitico, [
+          { label: 'Data', render: i => dataFormatada(i.data) },
+          { label: 'OP', campo: 'numero_op' },
+          { label: 'Produto', campo: 'produto' },
+          { label: 'Qtde (kg)', campo: 'qtde_kg' }
+        ])}
         </div>
       </div>
     </div>
@@ -666,13 +772,18 @@ function renderDashboardAdmin(r, mes, ano) {
       <div class="tabela-wrap"><table>
         <thead><tr><th>Produto Final</th><th>Total Unidades</th></tr></thead>
         <tbody>${prod.map(p=>`<tr><td>${p.produto}</td><td>${p.total_unidades}</td></tr>`).join('')}</tbody>
-      </table></div>
+      </table>
+      ${gerarCardsTabela(prod, [
+        { label: 'Produto', campo: 'produto' },
+        { label: 'Total Unidades', campo: 'total_unidades' }
+      ])}
+      </div>
     </div>
   `;
 }
 
 // ============================================================
-// AÇÕES — Modais e saves
+// AÇÕES
 // ============================================================
 const Acoes = {
   async salvarRecebimento() {
@@ -693,33 +804,25 @@ const Acoes = {
       msg.innerHTML = `<span class="msg-ok">✅ Recebimento registrado! OP gerada: <strong>${r.numero_op}</strong></span>`;
       Toast.show('OP ' + r.numero_op + ' criada com sucesso!');
       Autocomplete._recSelId = null;
-      document.getElementById('rec-prod-cod').value = '';
-      document.getElementById('rec-prod-desc').value = '';
+      document.getElementById('rec-produto-sel').value = '';
+      document.getElementById('rec-cod-view').value = '';
+      document.getElementById('rec-desc-view').value = '';
       document.getElementById('rec-qtde').value = '';
       document.getElementById('rec-obs').value = '';
     } else {
       msg.innerHTML = `<span class="msg-erro">${r.erro}</span>`;
     }
   },
-selecionarProdutoRec() {
+
+  selecionarProdutoRec() {
     const sel = document.getElementById('rec-produto-sel');
     const opt = sel.options[sel.selectedIndex];
     document.getElementById('rec-cod-view').value = opt ? opt.getAttribute('data-cod') || '' : '';
     document.getElementById('rec-desc-view').value = opt ? opt.getAttribute('data-desc') || '' : '';
     Autocomplete._recSelId = opt ? opt.value : null;
   },
-  filtrarProdutosFinais() {
-    const sel = document.getElementById('ap-op');
-    const masterID = sel.options[sel.selectedIndex]?.getAttribute('data-master');
-    if (!masterID || !Autocomplete._produtosTodos) return;
-    Autocomplete._produtosFinais = Autocomplete._produtosTodos.filter(
-      p => p.tipo === 'final' && p.produto_master_id === masterID
-    );
-    document.getElementById('ap-prod-cod').value = '';
-    document.getElementById('ap-prod-desc').value = '';
-    Autocomplete._apSelId = null;
-  },
- filtrarProdutosFinaisSelect() {
+
+  filtrarProdutosFinaisSelect() {
     const sel = document.getElementById('ap-op');
     const opt = sel.options[sel.selectedIndex];
     const masterID = opt?.getAttribute('data-master');
@@ -729,7 +832,6 @@ selecionarProdutoRec() {
 
     Autocomplete._apSelId = null;
     Autocomplete._apKgOp = parseFloat(kg) || 0;
-
     if (kgInput) kgInput.value = kg ? kg + ' kg' : '';
 
     if (!masterID) {
@@ -742,18 +844,18 @@ selecionarProdutoRec() {
     Autocomplete._produtosFinaisLista = finais;
     selProd.innerHTML = '<option value="">-- Selecione o produto final --</option>' +
       finais.map(p => `<option value="${p.id}" data-peso="${p.peso_final||0}">${p.codigo} — ${p.descricao}</option>`).join('');
-
     Acoes.calcularPerdaGanho();
   },
 
- selecionarProdutoFinal() {
+  selecionarProdutoFinal() {
     const sel = document.getElementById('ap-produto-sel');
     Autocomplete._apSelId = sel.value || null;
     const opt = sel.options[sel.selectedIndex];
     Autocomplete._apPesoFinal = opt ? parseFloat(opt.getAttribute('data-peso')) || 0 : 0;
     Acoes.calcularPerdaGanho();
   },
-calcularPerdaGanho() {
+
+  calcularPerdaGanho() {
     const tipo = document.getElementById('ap-tipo')?.value;
     const qtde = parseFloat(document.getElementById('ap-qtde')?.value) || 0;
     const kgOp = Autocomplete._apKgOp || 0;
@@ -764,7 +866,6 @@ calcularPerdaGanho() {
       if (resultado) resultado.style.display = 'none';
       return;
     }
-
     if (qtde <= 0 || pesoFinal <= 0 || kgOp <= 0) {
       resultado.style.display = 'none';
       return;
@@ -772,21 +873,21 @@ calcularPerdaGanho() {
 
     const produzidoKg = qtde * pesoFinal;
     const diff = produzidoKg - kgOp;
-    const pct = ((diff / kgOp) * 100);
+    const pct = (diff / kgOp) * 100;
     const isPerda = diff < 0;
     const cor = isPerda ? 'var(--vermelho)' : 'var(--verde-light)';
     const icone = isPerda ? '⚠️ Perda' : '✅ Ganho';
 
     document.getElementById('ap-res-recebido').textContent = kgOp.toFixed(2) + ' kg';
     document.getElementById('ap-res-produzido').textContent = produzidoKg.toFixed(2) + ' kg';
+    document.getElementById('ap-res-diff-label').textContent = icone;
     document.getElementById('ap-res-diff').textContent = (isPerda ? '' : '+') + diff.toFixed(2) + ' kg';
     document.getElementById('ap-res-diff').style.color = cor;
     document.getElementById('ap-res-pct').textContent = (isPerda ? '' : '+') + pct.toFixed(1) + '%';
     document.getElementById('ap-res-pct').style.color = cor;
-    document.getElementById('ap-res-diff').previousElementSibling.textContent = icone;
-
     resultado.style.display = '';
   },
+
   async salvarApontamento() {
     const opId = document.getElementById('ap-op').value;
     const tipo = document.getElementById('ap-tipo').value;
@@ -819,8 +920,8 @@ calcularPerdaGanho() {
 
     const html = `
       <div class="form-grid">
-        <div class="form-group"><label>Código <span style="color:var(--text-soft);font-size:11px">(deixe vazio para gerar automático)</span></label>
-  <input id="mp-cod" value="${p.codigo||''}" placeholder="Ex: 7891234 ou deixe vazio" /></div>
+        <div class="form-group"><label>Código <span style="color:var(--text-soft);font-size:11px">(vazio = automático)</span></label>
+          <input id="mp-cod" value="${p.codigo||''}" placeholder="Ex: 7891234 ou deixe vazio" /></div>
         <div class="form-group"><label>Descrição</label>
           <input id="mp-desc" value="${p.descricao||''}" /></div>
         <div class="form-group"><label>Tipo</label>
@@ -833,17 +934,15 @@ calcularPerdaGanho() {
             <option value="true" ${p.ativo=='true'||p.ativo=='TRUE'?'selected':''}>Sim</option>
             <option value="false" ${p.ativo=='false'||p.ativo=='FALSE'?'selected':''}>Não</option>
           </select></div>
-        <!-- Master -->
         <div class="form-group" id="mp-g-peso"><label>Peso da Unidade Master (kg)</label>
           <input id="mp-peso-m" type="number" value="${p.peso_master_kg||''}" /></div>
-        <!-- Final -->
         <div class="form-group" id="mp-g-master"><label>Produto Master vinculado</label>
           <select id="mp-master-id">
             <option value="">-- Selecione --</option>
             ${masters.map(m=>`<option value="${m.id}" ${p.produto_master_id===m.id?'selected':''}>${m.descricao}</option>`).join('')}
           </select></div>
-        <div class="form-group" id="mp-g-pesoF"><label>Peso da embalagem final</label>
-          <input id="mp-peso-f" value="${p.peso_final||''}" placeholder="Ex: 1kg" /></div>
+        <div class="form-group" id="mp-g-pesoF"><label>Peso da embalagem final (kg)</label>
+          <input id="mp-peso-f" type="number" step="0.001" value="${p.peso_final||''}" placeholder="Ex: 1 ou 0.5" /></div>
         <div class="form-group" id="mp-g-emb"><label>Descrição da embalagem</label>
           <input id="mp-emb" value="${p.embalagem||''}" /></div>
         <div class="form-group" id="mp-g-cemb"><label>Custo embalagem (R$)</label>
@@ -889,10 +988,8 @@ calcularPerdaGanho() {
   _toggleTipoProd() {
     const tipo = document.getElementById('mp-tipo').value;
     const master = tipo === 'master';
-    const ids = ['mp-g-peso'];
-    const finais = ['mp-g-master','mp-g-pesoF','mp-g-emb','mp-g-cemb','mp-g-crot','mp-g-temb','mp-g-val'];
-    ids.forEach(id => document.getElementById(id).style.display = master ? '' : 'none');
-    finais.forEach(id => document.getElementById(id).style.display = master ? 'none' : '');
+    ['mp-g-peso'].forEach(id => document.getElementById(id).style.display = master ? '' : 'none');
+    ['mp-g-master','mp-g-pesoF','mp-g-emb','mp-g-cemb','mp-g-crot','mp-g-temb','mp-g-val'].forEach(id => document.getElementById(id).style.display = master ? 'none' : '');
   },
 
   abrirModalFuncionario(func) {
@@ -993,55 +1090,12 @@ calcularPerdaGanho() {
 const Autocomplete = {
   _recSelId: null,
   _apSelId: null,
-  _apKgOp: 0,        // ← adicione esta linha
-  _apPesoFinal: 0,   // ← e esta linha
+  _apKgOp: 0,
+  _apPesoFinal: 0,
   _produtosRec: [],
   _produtosFinais: [],
   _produtosTodos: [],
-
-  buscar(inputId, outroCampoId, lista, campoPrincipal, campoSecundario) {
-    const termo = document.getElementById(inputId).value.toLowerCase();
-    const listEl = document.getElementById('auto-' + inputId);
-    if (!termo) { listEl.innerHTML = ''; return; }
-    const filtrados = lista.filter(p =>
-      String(p[campoPrincipal]).toLowerCase().includes(termo)
-    ).slice(0, 8);
-    listEl.innerHTML = filtrados.map(p =>
-      `<div class="autocomplete-item" onclick="Autocomplete._selecionarRec('${p.id}','${p[campoPrincipal].replace(/'/g,"\\'")}','${p[campoSecundario].replace(/'/g,"\\'")}','${inputId}','${outroCampoId}','auto-${inputId}')">${p[campoPrincipal]} — ${p[campoSecundario]}</div>`
-    ).join('');
-  },
-
-_selecionarRec(id, valPrincipal, valSecundario, inputId, outroCampoId, listId) {
-    const inputPrincipal = document.getElementById(inputId);
-    const inputSecundario = document.getElementById(outroCampoId);
-    const lista = document.getElementById(listId);
-    if (inputPrincipal) inputPrincipal.value = valPrincipal;
-    if (inputSecundario) inputSecundario.value = valSecundario;
-    if (lista) lista.innerHTML = '';
-    Autocomplete._recSelId = id;
-  },
-
-  buscarFinais(inputId, outroCampoId) {
-    const lista = this._produtosFinais;
-    const campoPrincipal = inputId.includes('cod') ? 'codigo' : 'descricao';
-    const campoSecundario = inputId.includes('cod') ? 'descricao' : 'codigo';
-    const termo = document.getElementById(inputId).value.toLowerCase();
-    const listEl = document.getElementById('auto-' + inputId);
-    if (!termo) { listEl.innerHTML = ''; return; }
-    const filtrados = lista.filter(p =>
-      String(p[campoPrincipal]).toLowerCase().includes(termo)
-    ).slice(0, 8);
-    listEl.innerHTML = filtrados.map(p =>
-      `<div class="autocomplete-item" onclick="Autocomplete._selecionarAp('${p.id}','${p[campoPrincipal].replace(/'/g,"\\'")}','${p[campoSecundario].replace(/'/g,"\\'")}','${inputId}','${outroCampoId}','auto-${inputId}')">${p[campoPrincipal]} — ${p[campoSecundario]}</div>`
-    ).join('');
-  },
-
-  _selecionarAp(id, valPrincipal, valSecundario, inputId, outroCampoId, listId) {
-    document.getElementById(inputId).value = valPrincipal;
-    document.getElementById(outroCampoId).value = valSecundario;
-    document.getElementById(listId).innerHTML = '';
-    this._apSelId = id;
-  }
+  _produtosFinaisLista: []
 };
 
 // ============================================================
@@ -1051,15 +1105,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (Estado.token && Estado.perfil) {
     App.iniciarApp();
   }
-
-  // Fechar autocomplete ao clicar fora
-  document.addEventListener('click', e => {
-    if (!e.target.closest('.autocomplete-wrap')) {
-      document.querySelectorAll('.autocomplete-lista').forEach(l => l.innerHTML = '');
-    }
-  });
-
-  // Login via Enter
   document.getElementById('login-senha')?.addEventListener('keydown', e => {
     if (e.key === 'Enter') App.login();
   });
