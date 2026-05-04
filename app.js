@@ -21,33 +21,37 @@ const Estado = {
 const Api = {
   async get(action, params = {}) {
     Spinner.mostrar();
-    try {
-      const qs = new URLSearchParams({ 
-        action, token: Estado.token, ...params 
-      }).toString();
-      const r = await fetch(`${API_URL}?${qs}`, { redirect: 'follow' });
-      const text = await r.text();
-      return JSON.parse(text);
-    } catch(e) { 
-      return { ok: false, erro: 'Erro de conexão.' }; 
-    } finally { 
-      Spinner.ocultar(); 
-    }
+    return new Promise((resolve) => {
+      const cbName = 'cb_' + Date.now();
+      const qs = new URLSearchParams({ action, token: Estado.token, ...params, callback: cbName }).toString();
+      const script = document.createElement('script');
+      script.src = `${API_URL}?${qs}`;
+      window[cbName] = (data) => {
+        resolve(data);
+        delete window[cbName];
+        if (document.body.contains(script)) document.body.removeChild(script);
+        Spinner.ocultar();
+      };
+      script.onerror = () => { resolve({ ok: false, erro: 'Erro de conexão.' }); Spinner.ocultar(); };
+      document.body.appendChild(script);
+    });
   },
   async post(action, body = {}) {
     Spinner.mostrar();
-    try {
-      const qs = new URLSearchParams({ 
-        action, token: Estado.token, ...body 
-      }).toString();
-      const r = await fetch(`${API_URL}?${qs}`, { redirect: 'follow' });
-      const text = await r.text();
-      return JSON.parse(text);
-    } catch(e) { 
-      return { ok: false, erro: 'Erro de conexão.' }; 
-    } finally { 
-      Spinner.ocultar(); 
-    }
+    return new Promise((resolve) => {
+      const cbName = 'cb_' + Date.now();
+      const params = new URLSearchParams({ action, token: Estado.token, ...body, callback: cbName }).toString();
+      const script = document.createElement('script');
+      script.src = `${API_URL}?${params}`;
+      window[cbName] = (data) => {
+        resolve(data);
+        delete window[cbName];
+        if (document.body.contains(script)) document.body.removeChild(script);
+        Spinner.ocultar();
+      };
+      script.onerror = () => { resolve({ ok: false, erro: 'Erro de conexão.' }); Spinner.ocultar(); };
+      document.body.appendChild(script);
+    });
   }
 };
 
@@ -134,12 +138,12 @@ function debounce(fn, id, ms = 300) {
 // CARDS MOBILE
 // ============================================================
 function gerarCardsTabela(itens, campos, acaoHtml) {
-  if (!itens || itens.length === 0) return '<div class="card-lista" style="display:flex"><p class="text-soft">Nenhum registro encontrado.</p></div>';
+  if (!itens || itens.length === 0) return '<div class="card-lista"><p class="text-soft">Nenhum registro encontrado.</p></div>';
   const cards = itens.map(item => {
     const linhas = campos.map(c => `
       <div class="card-item-row">
-        <span class="label">${c.label}</span>
-        <span class="valor">${c.render ? c.render(item) : (item[c.campo] || '—')}</span>
+        <span class="ci-label">${c.label}</span>
+        <span class="ci-valor">${c.render ? c.render(item) : (item[c.campo] !== undefined && item[c.campo] !== '' ? item[c.campo] : '—')}</span>
       </div>`).join('');
     const acao = acaoHtml ? acaoHtml(item) : '';
     return `<div class="card-item">${linhas}${acao ? `<div class="card-item-acoes">${acao}</div>` : ''}</div>`;
