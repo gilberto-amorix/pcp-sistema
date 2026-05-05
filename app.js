@@ -21,38 +21,46 @@ const Estado = {
 // Registro global de callbacks JSONP
 window._pcpCallbacks = {};
 
+var _pcpSeq = 0;
+
 const Api = {
   _call(action, params) {
     return new Promise((resolve) => {
-      const id = Date.now() + '_' + Math.floor(Math.random() * 99999);
-      const cbName = 'window._pcpCallbacks._cb' + id;
-      const cbKey = '_cb' + id;
+      _pcpSeq++;
+      const cbName = 'pcpCb' + _pcpSeq;
 
-      window._pcpCallbacks[cbKey] = (data) => {
+      window[cbName] = function(data) {
         resolve(data);
-        delete window._pcpCallbacks[cbKey];
-        const s = document.getElementById('pcp_s_' + id);
-        if (s) s.parentNode.removeChild(s);
+        try { delete window[cbName]; } catch(e) {}
+        try {
+          var s = document.getElementById(cbName);
+          if (s) s.parentNode.removeChild(s);
+        } catch(e) {}
         Spinner.ocultar();
       };
 
-      const qs = new URLSearchParams({
-        action, token: Estado.token || '', ...params, callback: cbName
-      }).toString();
+      var qs = new URLSearchParams({
+        action: action,
+        token: Estado.token || '',
+        callback: cbName
+      });
+      Object.keys(params).forEach(function(k) {
+        qs.append(k, params[k]);
+      });
 
-      const script = document.createElement('script');
-      script.id = 'pcp_s_' + id;
-      script.src = `${API_URL}?${qs}`;
-      script.onerror = () => {
+      var script = document.createElement('script');
+      script.id = cbName;
+      script.src = API_URL + '?' + qs.toString();
+      script.onerror = function() {
         resolve({ ok: false, erro: 'Erro de conexão.' });
-        delete window._pcpCallbacks[cbKey];
+        try { delete window[cbName]; } catch(e) {}
         Spinner.ocultar();
       };
 
-      setTimeout(() => {
-        if (window._pcpCallbacks[cbKey]) {
+      setTimeout(function() {
+        if (window[cbName]) {
           resolve({ ok: false, erro: 'Tempo esgotado.' });
-          delete window._pcpCallbacks[cbKey];
+          try { delete window[cbName]; } catch(e) {}
           Spinner.ocultar();
         }
       }, 20000);
@@ -61,27 +69,13 @@ const Api = {
       document.head.appendChild(script);
     });
   },
-  async get(action, params = {}) {
-    return this._call(action, params);
+  async get(action, params) {
+    return this._call(action, params || {});
   },
-  async post(action, body = {}) {
-    return this._call(action, body);
+  async post(action, body) {
+    return this._call(action, body || {});
   }
 };
-
-// ============================================================
-// UTILITÁRIOS
-// ============================================================
-const Toast = {
-  show(msg, tipo = 'sucesso') {
-    const t = document.getElementById('toast');
-    t.textContent = msg;
-    t.className = `toast visivel ${tipo}`;
-    clearTimeout(Toast._t);
-    Toast._t = setTimeout(() => t.classList.remove('visivel'), 3500);
-  }
-};
-
 const Spinner = {
   _el: null,
   mostrar() {
