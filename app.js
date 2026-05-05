@@ -18,16 +18,20 @@ const Estado = {
 // ============================================================
 // API — Comunicação com o Apps Script (JSONP)
 // ============================================================
+// Registro global de callbacks JSONP
+window._pcpCallbacks = {};
+
 const Api = {
   _call(action, params) {
     return new Promise((resolve) => {
-      const cbName = 'pcp_' + Date.now() + '_' + Math.floor(Math.random() * 9999);
-      
-      // Registrar callback ANTES de fazer a requisição
-      window[cbName] = (data) => {
+      const id = Date.now() + '_' + Math.floor(Math.random() * 99999);
+      const cbName = 'window._pcpCallbacks._cb' + id;
+      const cbKey = '_cb' + id;
+
+      window._pcpCallbacks[cbKey] = (data) => {
         resolve(data);
-        delete window[cbName];
-        const s = document.getElementById(cbName);
+        delete window._pcpCallbacks[cbKey];
+        const s = document.getElementById('pcp_s_' + id);
         if (s) s.parentNode.removeChild(s);
         Spinner.ocultar();
       };
@@ -37,19 +41,18 @@ const Api = {
       }).toString();
 
       const script = document.createElement('script');
-      script.id = cbName;
+      script.id = 'pcp_s_' + id;
       script.src = `${API_URL}?${qs}`;
       script.onerror = () => {
         resolve({ ok: false, erro: 'Erro de conexão.' });
-        delete window[cbName];
+        delete window._pcpCallbacks[cbKey];
         Spinner.ocultar();
       };
 
-      // Timeout de segurança
       setTimeout(() => {
-        if (window[cbName]) {
+        if (window._pcpCallbacks[cbKey]) {
           resolve({ ok: false, erro: 'Tempo esgotado.' });
-          delete window[cbName];
+          delete window._pcpCallbacks[cbKey];
           Spinner.ocultar();
         }
       }, 20000);
