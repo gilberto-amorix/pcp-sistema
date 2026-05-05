@@ -76,6 +76,7 @@ const Api = {
     return this._call(action, body || {});
   }
 };
+
 const Spinner = {
   _el: null,
   mostrar() {
