@@ -769,13 +769,19 @@ const rProds = await Api.get('listarProdutos', { ativo: 'true' });
     const hKg = (recebidoKg[i] / maxKg) * gH;
     const hUn = (produzidoUn[i] / maxUn) * gH;
 
-    if (showEnt) {
-      barsEnt += `<rect x="${x - barW - 2}" y="${padT + scaleKg(recebidoKg[i])}" width="${barW}" height="${hKg}" fill="#3b82f6" rx="3" opacity="0.85">
-        <title>Recebido: ${recebidoKg[i].toFixed(1)} kg</title></rect>`;
+  if (showEnt) {
+      const yBar = padT + scaleKg(recebidoKg[i]);
+      barsEnt += `<rect x="${x - barW - 2}" y="${yBar}" width="${barW}" height="${hKg}" fill="#3b82f6" rx="3" opacity="0.85"/>`;
+      if (recebidoKg[i] > 0) {
+        barsEnt += `<text x="${x - barW/2 - 2}" y="${yBar - 4}" text-anchor="middle" fill="#93c5fd" font-size="10" font-weight="600">${recebidoKg[i] >= 1000 ? (recebidoKg[i]/1000).toFixed(1)+'k' : recebidoKg[i].toFixed(0)}</text>`;
+      }
     }
     if (showSai) {
-      barsSai += `<rect x="${x + 2}" y="${padT + scaleUn(produzidoUn[i])}" width="${barW}" height="${hUn}" fill="#22c55e" rx="3" opacity="0.85">
-        <title>Produzido: ${produzidoUn[i]} un</title></rect>`;
+      const yBar = padT + scaleUn(produzidoUn[i]);
+      barsSai += `<rect x="${x + 2}" y="${yBar}" width="${barW}" height="${hUn}" fill="#22c55e" rx="3" opacity="0.85"/>`;
+      if (produzidoUn[i] > 0) {
+        barsSai += `<text x="${x + barW/2 + 2}" y="${yBar - 4}" text-anchor="middle" fill="#86efac" font-size="10" font-weight="600">${produzidoUn[i] >= 1000 ? (produzidoUn[i]/1000).toFixed(1)+'k' : produzidoUn[i].toFixed(0)}</text>`;
+      }
     }
   });
 
