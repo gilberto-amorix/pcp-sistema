@@ -2,7 +2,7 @@
 // PCP — app.js — Lógica completa do frontend
 // ============================================================
 
-const API_URL = 'https://script.google.com/macros/s/AKfycbzlR6Ngvv0uLDsllGlGVme2gQ9lVClxipKr8pFoYncoy_j6zvVloqBvqPWG5q0eEiVR/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbxGobGm5H2Mee6IoP-smUcBovlmEs15_lhHgg-yyFKNErmkQKs7K8atb06ph-VViT5Q/exec';
 
 // ============================================================
 // ESTADO GLOBAL
@@ -19,45 +19,42 @@ const Estado = {
 // API — Comunicação com o Apps Script (JSONP)
 // ============================================================
 const Api = {
-  _call(action, params) {
+  async get(action, params = {}) {
+    Spinner.mostrar();
     return new Promise((resolve) => {
-      const cbName = 'pcp_' + Math.random().toString(36).slice(2);
-      const qs = new URLSearchParams({ 
-        action, token: Estado.token || '', ...params, callback: cbName 
-      }).toString();
-      const s = document.createElement('script');
-      s.src = `${API_URL}?${qs}`;
+      const cbName = 'cb_' + Date.now();
+      const qs = new URLSearchParams({ action, token: Estado.token, ...params, callback: cbName }).toString();
+      const script = document.createElement('script');
+      script.src = `${API_URL}?${qs}`;
       window[cbName] = (data) => {
         resolve(data);
         delete window[cbName];
-        try { document.body.removeChild(s); } catch(e) {}
+        if (document.body.contains(script)) document.body.removeChild(script);
         Spinner.ocultar();
       };
-      s.onerror = () => {
-        resolve({ ok: false, erro: 'Erro de conexão.' });
-        delete window[cbName];
-        try { document.body.removeChild(s); } catch(e) {}
-        Spinner.ocultar();
-      };
-      setTimeout(() => {
-        if (window[cbName]) {
-          resolve({ ok: false, erro: 'Tempo esgotado.' });
-          delete window[cbName];
-          try { document.body.removeChild(s); } catch(e) {}
-          Spinner.ocultar();
-        }
-      }, 15000);
-      Spinner.mostrar();
-      document.body.appendChild(s);
+      script.onerror = () => { resolve({ ok: false, erro: 'Erro de conexão.' }); Spinner.ocultar(); };
+      document.body.appendChild(script);
     });
   },
-  async get(action, params = {}) {
-    return this._call(action, params);
-  },
   async post(action, body = {}) {
-    return this._call(action, body);
+    Spinner.mostrar();
+    return new Promise((resolve) => {
+      const cbName = 'cb_' + Date.now();
+      const params = new URLSearchParams({ action, token: Estado.token, ...body, callback: cbName }).toString();
+      const script = document.createElement('script');
+      script.src = `${API_URL}?${params}`;
+      window[cbName] = (data) => {
+        resolve(data);
+        delete window[cbName];
+        if (document.body.contains(script)) document.body.removeChild(script);
+        Spinner.ocultar();
+      };
+      script.onerror = () => { resolve({ ok: false, erro: 'Erro de conexão.' }); Spinner.ocultar(); };
+      document.body.appendChild(script);
+    });
   }
 };
+
 // ============================================================
 // UTILITÁRIOS
 // ============================================================
@@ -274,14 +271,26 @@ const Telas = {
       const ano = hoje.getFullYear();
       const r = await Api.get('dashboardAdmin', { mes, ano });
       if (!r.ok) { el.innerHTML = `<p class="text-vermelho">${r.erro}</p>`; return; }
-      el.innerHTML = renderDashboardAdmin(r, mes, ano);
+      el.innerHTML = htmlGrafico() + renderDashboardAdmin(r, mes, ano);
       document.getElementById('sel-mes').onchange = Telas._atualizarDashAdmin;
       document.getElementById('sel-ano').onchange = Telas._atualizarDashAdmin;
     } else {
       const r = await Api.get('dashboardOperador');
       if (!r.ok) { el.innerHTML = `<p class="text-vermelho">${r.erro}</p>`; return; }
-      el.innerHTML = renderDashboardOperador(r);
+      el.innerHTML = htmlGrafico() + renderDashboardOperador(r);
     }
+    // Carregar gráfico com valores padrão
+    setTimeout(() => Telas._atualizarGrafico(), 100);
+  },
+
+  async _atualizarGrafico() {
+    const mesIni  = document.getElementById('graf-mes-ini')?.value;
+    const anoIni  = document.getElementById('graf-ano-ini')?.value;
+    const mesFim  = document.getElementById('graf-mes-fim')?.value;
+    const anoFim  = document.getElementById('graf-ano-fim')?.value;
+    const mostrar = document.getElementById('graf-mostrar')?.value || 'ambos';
+    if (!mesIni || !anoIni || !mesFim || !anoFim) return;
+    await renderGrafico(mesIni, anoIni, mesFim, anoFim, mostrar);
   },
 
   async _atualizarDashAdmin() {
@@ -682,6 +691,194 @@ function seletorMesAno(mes, ano, idMes, idAno, callback) {
     <select id="${idAno}" onchange="${callback}">
       ${anos.map(a=>`<option value="${a}" ${a==ano?'selected':''}>${a}</option>`).join('')}
     </select>
+  `;
+}
+
+// ============================================================
+// GRÁFICO DE RECEBIMENTO vs PRODUÇÃO
+// ============================================================
+async function renderGrafico(mesIni, anoIni, mesFim, anoFim, mostrar) {
+  const el = document.getElementById('grafico-container');
+  if (!el) return;
+  el.innerHTML = '<div class="text-soft" style="text-align:center;padding:20px">Carregando gráfico...</div>';
+
+  const [rOPs, rApont, rProds] = await Promise.all([
+    Api.get('listarOPs', {}),
+    Api.get('listarApontamentos', {}),
+    Api.get('listarProdutos', { ativo: 'true' })
+  ]);
+
+  const ops = rOPs.ok ? rOPs.dados : [];
+  const apont = rApont.ok ? rApont.dados : [];
+  const produtos = rProds.ok ? rProds.dados : [];
+
+  // Gerar lista de meses no intervalo
+  const meses = [];
+  let y = parseInt(anoIni), m = parseInt(mesIni);
+  const yFim = parseInt(anoFim), mFim = parseInt(mesFim);
+  while (y < yFim || (y === yFim && m <= mFim)) {
+    meses.push({ y, m });
+    m++;
+    if (m > 12) { m = 1; y++; }
+  }
+
+  const nomesMeses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const labels = meses.map(x => `${nomesMeses[x.m-1]}/${x.y}`);
+
+  // Recebido em kg por mês
+  const recebidoKg = meses.map(({ y, m }) =>
+    ops.filter(op => {
+      const d = new Date(op.data_criacao);
+      return d.getFullYear() === y && d.getMonth() + 1 === m;
+    }).reduce((acc, op) => acc + (parseFloat(op.quantidade_recebida_kg) || 0), 0)
+  );
+
+  // Produzido em unidades por mês
+  const produzidoUn = meses.map(({ y, m }) =>
+    apont.filter(ap => {
+      const d = new Date(ap.data_apontamento);
+      return d.getFullYear() === y && d.getMonth() + 1 === m;
+    }).reduce((acc, ap) => acc + (parseFloat(ap.quantidade_produzida) || 0), 0)
+  );
+
+  // Montar SVG do gráfico
+  const W = el.offsetWidth || 600;
+  const H = 260;
+  const padL = 60, padR = 20, padT = 30, padB = 50;
+  const gW = W - padL - padR;
+  const gH = H - padT - padB;
+  const n = labels.length;
+  const barW = Math.max(8, Math.min(40, (gW / (n || 1)) * 0.35));
+  const gap = gW / (n || 1);
+
+  const maxKg = Math.max(...recebidoKg, 1);
+  const maxUn = Math.max(...produzidoUn, 1);
+
+  const scaleKg = v => gH - (v / maxKg) * gH;
+  const scaleUn = v => gH - (v / maxUn) * gH;
+
+  const showEnt = mostrar !== 'saida';
+  const showSai = mostrar !== 'entrada';
+
+  // Barras entradas
+  let barsEnt = '', barsSai = '', linePoints = '', dots = '';
+  labels.forEach((lb, i) => {
+    const x = padL + gap * i + gap / 2;
+    const hKg = (recebidoKg[i] / maxKg) * gH;
+    const hUn = (produzidoUn[i] / maxUn) * gH;
+
+    if (showEnt) {
+      barsEnt += `<rect x="${x - barW - 2}" y="${padT + scaleKg(recebidoKg[i])}" width="${barW}" height="${hKg}" fill="#3b82f6" rx="3" opacity="0.85">
+        <title>Recebido: ${recebidoKg[i].toFixed(1)} kg</title></rect>`;
+    }
+    if (showSai) {
+      barsSai += `<rect x="${x + 2}" y="${padT + scaleUn(produzidoUn[i])}" width="${barW}" height="${hUn}" fill="#22c55e" rx="3" opacity="0.85">
+        <title>Produzido: ${produzidoUn[i]} un</title></rect>`;
+    }
+  });
+
+  // Linha de produção
+  if (showSai && n > 1) {
+    const pts = labels.map((lb, i) => {
+      const x = padL + gap * i + gap / 2 + 2 + barW / 2;
+      const y = padT + scaleUn(produzidoUn[i]);
+      return `${x},${y}`;
+    }).join(' ');
+    linePoints = `<polyline points="${pts}" fill="none" stroke="#4ade80" stroke-width="2" stroke-dasharray="4,2" opacity="0.6"/>`;
+    labels.forEach((lb, i) => {
+      const x = padL + gap * i + gap / 2 + 2 + barW / 2;
+      const y = padT + scaleUn(produzidoUn[i]);
+      dots += `<circle cx="${x}" cy="${y}" r="3" fill="#4ade80"/>`;
+    });
+  }
+
+  // Eixo Y esquerdo (kg) e direito (un)
+  const yTicks = 4;
+  let yAxisKg = '', yAxisUn = '', gridLines = '';
+  for (let i = 0; i <= yTicks; i++) {
+    const y = padT + (gH / yTicks) * i;
+    const valKg = maxKg - (maxKg / yTicks) * i;
+    const valUn = maxUn - (maxUn / yTicks) * i;
+    gridLines += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="#334155" stroke-width="1"/>`;
+    yAxisKg += `<text x="${padL - 6}" y="${y + 4}" text-anchor="end" fill="#94a3b8" font-size="11">${valKg >= 1000 ? (valKg/1000).toFixed(1)+'k' : valKg.toFixed(0)}</text>`;
+    yAxisUn += `<text x="${W - padR + 6}" y="${y + 4}" text-anchor="start" fill="#94a3b8" font-size="11">${valUn >= 1000 ? (valUn/1000).toFixed(1)+'k' : valUn.toFixed(0)}</text>`;
+  }
+
+  // Labels eixo X
+  let xLabels = '';
+  labels.forEach((lb, i) => {
+    const x = padL + gap * i + gap / 2;
+    xLabels += `<text x="${x}" y="${H - 8}" text-anchor="middle" fill="#94a3b8" font-size="11">${lb}</text>`;
+  });
+
+  // Labels eixos
+  const labelKg = showEnt ? `<text x="14" y="${H/2}" text-anchor="middle" fill="#3b82f6" font-size="11" transform="rotate(-90,14,${H/2})">Recebido (kg)</text>` : '';
+  const labelUn = showSai ? `<text x="${W-8}" y="${H/2}" text-anchor="middle" fill="#22c55e" font-size="11" transform="rotate(90,${W-8},${H/2})">Produzido (un)</text>` : '';
+
+  el.innerHTML = `
+    <svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+      ${gridLines}
+      ${barsEnt}${barsSai}
+      ${linePoints}${dots}
+      ${yAxisKg}${yAxisUn}
+      ${xLabels}
+      ${labelKg}${labelUn}
+      <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT+gH}" stroke="#475569" stroke-width="1"/>
+      <line x1="${padL}" y1="${padT+gH}" x2="${W-padR}" y2="${padT+gH}" stroke="#475569" stroke-width="1"/>
+    </svg>
+    <div style="display:flex;gap:16px;justify-content:center;margin-top:8px;flex-wrap:wrap">
+      ${showEnt ? '<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#94a3b8"><span style="width:14px;height:14px;background:#3b82f6;border-radius:3px;display:inline-block"></span>Recebido (kg)</div>' : ''}
+      ${showSai ? '<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#94a3b8"><span style="width:14px;height:14px;background:#22c55e;border-radius:3px;display:inline-block"></span>Produzido (un)</div>' : ''}
+    </div>
+  `;
+}
+
+function htmlGrafico() {
+  const hoje = new Date();
+  const mesAtual = hoje.getMonth() + 1;
+  const anoAtual = hoje.getFullYear();
+  const meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  const anos = [2024, 2025, 2026, 2027];
+
+  const selMes = (id, val) => meses.map((m,i) => `<option value="${i+1}" ${i+1==val?'selected':''}>${m}</option>`).join('');
+  const selAno = (id, val) => anos.map(a => `<option value="${a}" ${a==val?'selected':''}>${a}</option>`).join('');
+
+  // Padrão: últimos 6 meses
+  let mIni = mesAtual - 5; let aIni = anoAtual;
+  if (mIni <= 0) { mIni += 12; aIni--; }
+
+  return `
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-titulo">📊 Recebimento vs Produção</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px">
+        <div class="form-group" style="min-width:120px">
+          <label>Mês inicial</label>
+          <select id="graf-mes-ini">${selMes('graf-mes-ini', mIni)}</select>
+        </div>
+        <div class="form-group" style="min-width:100px">
+          <label>Ano inicial</label>
+          <select id="graf-ano-ini">${selAno('graf-ano-ini', aIni)}</select>
+        </div>
+        <div class="form-group" style="min-width:120px">
+          <label>Mês final</label>
+          <select id="graf-mes-fim">${selMes('graf-mes-fim', mesAtual)}</select>
+        </div>
+        <div class="form-group" style="min-width:100px">
+          <label>Ano final</label>
+          <select id="graf-ano-fim">${selAno('graf-ano-fim', anoAtual)}</select>
+        </div>
+        <div class="form-group" style="min-width:140px">
+          <label>Exibir</label>
+          <select id="graf-mostrar">
+            <option value="ambos">Entradas e Saídas</option>
+            <option value="entrada">Somente Entradas</option>
+            <option value="saida">Somente Saídas</option>
+          </select>
+        </div>
+        <button class="btn btn-verde btn-sm" onclick="Telas._atualizarGrafico()" style="margin-bottom:2px">🔄 Atualizar</button>
+      </div>
+      <div id="grafico-container" style="width:100%;min-height:260px"></div>
+    </div>
   `;
 }
 
