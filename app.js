@@ -21,35 +21,41 @@ const Estado = {
 const Api = {
   _call(action, params) {
     return new Promise((resolve) => {
-      const cbName = 'cb_' + Math.random().toString(36).slice(2) + Date.now();
-      const qs = new URLSearchParams({
-        action, token: Estado.token || '', ...params, callback: cbName
-      }).toString();
-      const script = document.createElement('script');
-      script.src = `${API_URL}?${qs}`;
+      const cbName = 'pcp_' + Date.now() + '_' + Math.floor(Math.random() * 9999);
+      
+      // Registrar callback ANTES de fazer a requisição
       window[cbName] = (data) => {
         resolve(data);
         delete window[cbName];
-        try { document.body.removeChild(script); } catch(e) {}
+        const s = document.getElementById(cbName);
+        if (s) s.parentNode.removeChild(s);
         Spinner.ocultar();
       };
+
+      const qs = new URLSearchParams({
+        action, token: Estado.token || '', ...params, callback: cbName
+      }).toString();
+
+      const script = document.createElement('script');
+      script.id = cbName;
+      script.src = `${API_URL}?${qs}`;
       script.onerror = () => {
         resolve({ ok: false, erro: 'Erro de conexão.' });
         delete window[cbName];
-        try { document.body.removeChild(script); } catch(e) {}
         Spinner.ocultar();
       };
+
+      // Timeout de segurança
       setTimeout(() => {
         if (window[cbName]) {
           resolve({ ok: false, erro: 'Tempo esgotado.' });
           delete window[cbName];
-          try { document.body.removeChild(script); } catch(e) {}
           Spinner.ocultar();
         }
-      }, 15000);
+      }, 20000);
+
       Spinner.mostrar();
-      window[cbName] = window[cbName]; // garante registro antes do append
-      document.body.appendChild(script);
+      document.head.appendChild(script);
     });
   },
   async get(action, params = {}) {
