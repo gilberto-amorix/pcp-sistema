@@ -702,12 +702,9 @@ async function renderGrafico(mesIni, anoIni, mesFim, anoFim, mostrar) {
   if (!el) return;
   el.innerHTML = '<div class="text-soft" style="text-align:center;padding:20px">Carregando gráfico...</div>';
 
-  const [rOPs, rApont, rProds] = await Promise.all([
-    Api.get('listarOPs', {}),
-    Api.get('listarApontamentos', {}),
-    Api.get('listarProdutos', { ativo: 'true' })
-  ]);
-
+  const rOPs = await Api.get('listarOPs', { status: 'Não Iniciado,Em Produção,Finalizado' });
+const rApont = await Api.get('listarApontamentos', {});
+const rProds = await Api.get('listarProdutos', { ativo: 'true' });
   const ops = rOPs.ok ? rOPs.dados : [];
   const apont = rApont.ok ? rApont.dados : [];
   const produtos = rProds.ok ? rProds.dados : [];
