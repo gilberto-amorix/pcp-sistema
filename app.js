@@ -2,7 +2,7 @@
 // PCP — app.js — Lógica completa do frontend
 // ============================================================
 
-const API_URL = 'https://script.google.com/macros/s/AKfycbzlR6Ngvv0uLDsllGlGVme2gQ9lVClxipKr8pFoYncoy_j6zvVloqBvqPWG5q0eEiVR/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbxGobGm5H2Mee6IoP-smUcBovlmEs15_lhHgg-yyFKNErmkQKs7K8atb06ph-VViT5Q/exec';
 
 // ============================================================
 // ESTADO GLOBAL
@@ -18,62 +18,53 @@ const Estado = {
 // ============================================================
 // API — Comunicação com o Apps Script (JSONP)
 // ============================================================
-// Registro global de callbacks JSONP
-window._pcpCallbacks = {};
-
-var _pcpSeq = 0;
-
 const Api = {
-  _call(action, params) {
+  async get(action, params = {}) {
+    Spinner.mostrar();
     return new Promise((resolve) => {
-      _pcpSeq++;
-      const cbName = 'pcpCb' + _pcpSeq;
-
-      window[cbName] = function(data) {
+      const cbName = 'cb_' + Date.now();
+      const qs = new URLSearchParams({ action, token: Estado.token, ...params, callback: cbName }).toString();
+      const script = document.createElement('script');
+      script.src = `${API_URL}?${qs}`;
+      window[cbName] = (data) => {
         resolve(data);
-        try { delete window[cbName]; } catch(e) {}
-        try {
-          var s = document.getElementById(cbName);
-          if (s) s.parentNode.removeChild(s);
-        } catch(e) {}
+        delete window[cbName];
+        if (document.body.contains(script)) document.body.removeChild(script);
         Spinner.ocultar();
       };
-
-      var qs = new URLSearchParams({
-        action: action,
-        token: Estado.token || '',
-        callback: cbName
-      });
-      Object.keys(params).forEach(function(k) {
-        qs.append(k, params[k]);
-      });
-
-      var script = document.createElement('script');
-      script.id = cbName;
-      script.src = API_URL + '?' + qs.toString();
-      script.onerror = function() {
-        resolve({ ok: false, erro: 'Erro de conexão.' });
-        try { delete window[cbName]; } catch(e) {}
-        Spinner.ocultar();
-      };
-
-      setTimeout(function() {
-        if (window[cbName]) {
-          resolve({ ok: false, erro: 'Tempo esgotado.' });
-          try { delete window[cbName]; } catch(e) {}
-          Spinner.ocultar();
-        }
-      }, 20000);
-
-      Spinner.mostrar();
-      document.head.appendChild(script);
+      script.onerror = () => { resolve({ ok: false, erro: 'Erro de conexão.' }); Spinner.ocultar(); };
+      document.body.appendChild(script);
     });
   },
-  async get(action, params) {
-    return this._call(action, params || {});
-  },
-  async post(action, body) {
-    return this._call(action, body || {});
+  async post(action, body = {}) {
+    Spinner.mostrar();
+    return new Promise((resolve) => {
+      const cbName = 'cb_' + Date.now();
+      const params = new URLSearchParams({ action, token: Estado.token, ...body, callback: cbName }).toString();
+      const script = document.createElement('script');
+      script.src = `${API_URL}?${params}`;
+      window[cbName] = (data) => {
+        resolve(data);
+        delete window[cbName];
+        if (document.body.contains(script)) document.body.removeChild(script);
+        Spinner.ocultar();
+      };
+      script.onerror = () => { resolve({ ok: false, erro: 'Erro de conexão.' }); Spinner.ocultar(); };
+      document.body.appendChild(script);
+    });
+  }
+};
+
+// ============================================================
+// UTILITÁRIOS
+// ============================================================
+const Toast = {
+  show(msg, tipo = 'sucesso') {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = `toast visivel ${tipo}`;
+    clearTimeout(Toast._t);
+    Toast._t = setTimeout(() => t.classList.remove('visivel'), 3500);
   }
 };
 
@@ -636,6 +627,15 @@ const Telas = {
     const d = r.dre;
     const lucroClass = d.lucro_liquido >= 0 ? 'text-verde' : 'text-vermelho';
 
+    // Padrão comparativo: últimos 6 meses
+    const hoje = new Date();
+    let mIni = hoje.getMonth() - 4; let aIni = hoje.getFullYear();
+    if (mIni <= 0) { mIni += 12; aIni--; }
+    const meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+    const anos = [2024,2025,2026,2027];
+    const selMes = (id, val) => meses.map((m,i) => `<option value="${i+1}" ${i+1==val?'selected':''}>${m}</option>`).join('');
+    const selAno = (id, val) => anos.map(a => `<option value="${a}" ${a==val?'selected':''}>${a}</option>`).join('');
+
     el.innerHTML = `
       <div class="page-titulo">📈 DRE — Demonstrativo de Resultado</div>
       <div class="periodo-selector">
@@ -676,7 +676,143 @@ const Telas = {
           <span class="${lucroClass} negrito">${moeda(d.lucro_liquido)} <span class="pct">${d.percentuais.lucro_liquido}</span></span>
         </div>
       </div>
+
+      <!-- DRE COMPARATIVA -->
+      <div class="card" style="margin-top:24px">
+        <div class="card-titulo">📊 DRE Comparativa por Período</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px">
+          <div class="form-group" style="min-width:120px">
+            <label>Mês inicial</label>
+            <select id="drec-mes-ini">${selMes('drec-mes-ini', mIni)}</select>
+          </div>
+          <div class="form-group" style="min-width:100px">
+            <label>Ano inicial</label>
+            <select id="drec-ano-ini">${selAno('drec-ano-ini', aIni)}</select>
+          </div>
+          <div class="form-group" style="min-width:120px">
+            <label>Mês final</label>
+            <select id="drec-mes-fim">${selMes('drec-mes-fim', hoje.getMonth()+1)}</select>
+          </div>
+          <div class="form-group" style="min-width:100px">
+            <label>Ano final</label>
+            <select id="drec-ano-fim">${selAno('drec-ano-fim', hoje.getFullYear())}</select>
+          </div>
+          <button class="btn btn-verde btn-sm" onclick="Telas._carregarDREComparativa()" style="margin-bottom:2px">🔄 Atualizar</button>
+        </div>
+        <div id="drec-container"><div class="text-soft" style="text-align:center;padding:20px">Clique em Atualizar para carregar.</div></div>
+      </div>
     `;
+  },
+
+  async _carregarDREComparativa() {
+    const mesIni = document.getElementById('drec-mes-ini')?.value;
+    const anoIni = document.getElementById('drec-ano-ini')?.value;
+    const mesFim = document.getElementById('drec-mes-fim')?.value;
+    const anoFim = document.getElementById('drec-ano-fim')?.value;
+    const el = document.getElementById('drec-container');
+    if (!el) return;
+    el.innerHTML = '<div class="text-soft" style="text-align:center;padding:20px">Carregando...</div>';
+
+    const r = await Api.get('dreComparativo', { mesIni, anoIni, mesFim, anoFim });
+    if (!r.ok) { el.innerHTML = `<p class="text-vermelho">${r.erro}</p>`; return; }
+
+    const dados = r.dados;
+    if (!dados || dados.length === 0) {
+      el.innerHTML = '<div class="text-soft" style="text-align:center;padding:20px">Nenhum dado no período.</div>';
+      return;
+    }
+
+    // Tabela comparativa
+    const linhas = ['receita', 'despesas_op', 'despesas_pessoas', 'lucro'];
+    const labels = { receita: '(+) Receita Bruta', despesas_op: '(−) Desp. Operacionais', despesas_pessoas: '(−) Desp. Pessoas', lucro: '(=) Lucro Líquido' };
+    const cores = { receita: 'text-verde', despesas_op: 'text-vermelho', despesas_pessoas: 'text-vermelho', lucro: '' };
+
+    const tabela = `
+      <div style="overflow-x:auto;margin-bottom:20px">
+        <table style="min-width:${100 + dados.length * 130}px">
+          <thead>
+            <tr>
+              <th style="text-align:left;min-width:160px">Indicador</th>
+              ${dados.map(d => `<th style="text-align:right">${d.mes}</th>`).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${linhas.map(l => `
+              <tr style="${l==='lucro'?'border-top:2px solid var(--border);font-weight:800':''}" >
+                <td style="font-size:13px">${labels[l]}</td>
+                ${dados.map(d => {
+                  const v = d[l];
+                  const cls = l === 'lucro' ? (v >= 0 ? 'text-verde' : 'text-vermelho') : cores[l];
+                  return `<td style="text-align:right" class="${cls}">${moeda(v)}</td>`;
+                }).join('')}
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    // Gráfico SVG
+    const W = el.offsetWidth || 700;
+    const H = 280;
+    const padL = 70, padR = 20, padT = 30, padB = 50;
+    const gW = W - padL - padR;
+    const gH = H - padT - padB;
+    const n = dados.length;
+    const gap = gW / (n || 1);
+    const barW = Math.max(6, Math.min(30, gap * 0.25));
+
+    const allVals = dados.flatMap(d => [d.receita, d.despesas_op + d.despesas_pessoas, Math.abs(d.lucro)]);
+    const maxV = Math.max(...allVals, 1);
+    const scaleV = v => gH - (Math.abs(v) / maxV) * gH;
+
+    let barsReceita = '', barsDespesas = '', barsLucro = '', xLabels = '', gridLines = '', yAxis = '';
+
+    // Grid
+    for (let i = 0; i <= 4; i++) {
+      const y = padT + (gH / 4) * i;
+      const val = maxV - (maxV / 4) * i;
+      gridLines += `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="#334155" stroke-width="1"/>`;
+      yAxis += `<text x="${padL-6}" y="${y+4}" text-anchor="end" fill="#94a3b8" font-size="10">${val>=1000?(val/1000).toFixed(0)+'k':val.toFixed(0)}</text>`;
+    }
+
+    dados.forEach((d, i) => {
+      const x = padL + gap * i + gap / 2;
+
+      // Receita
+      const hRec = (d.receita / maxV) * gH;
+      barsReceita += `<rect x="${x - barW*1.5 - 2}" y="${padT + scaleV(d.receita)}" width="${barW}" height="${hRec}" fill="#3b82f6" rx="2" opacity="0.85"/>`;
+
+      // Despesas total
+      const totalDesp = d.despesas_op + d.despesas_pessoas;
+      const hDesp = (totalDesp / maxV) * gH;
+      barsDespesas += `<rect x="${x - barW/2}" y="${padT + scaleV(totalDesp)}" width="${barW}" height="${hDesp}" fill="#f87171" rx="2" opacity="0.85"/>`;
+
+      // Lucro
+      const hLuc = (Math.abs(d.lucro) / maxV) * gH;
+      const corLucro = d.lucro >= 0 ? '#22c55e' : '#ef4444';
+      barsLucro += `<rect x="${x + barW/2 + 2}" y="${padT + scaleV(Math.abs(d.lucro))}" width="${barW}" height="${hLuc}" fill="${corLucro}" rx="2" opacity="0.85"/>`;
+
+      // Label X
+      xLabels += `<text x="${x}" y="${H-8}" text-anchor="middle" fill="#94a3b8" font-size="10">${d.mes}</text>`;
+    });
+
+    const grafico = `
+      <svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+        ${gridLines}${yAxis}
+        ${barsReceita}${barsDespesas}${barsLucro}
+        ${xLabels}
+        <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT+gH}" stroke="#475569" stroke-width="1"/>
+        <line x1="${padL}" y1="${padT+gH}" x2="${W-padR}" y2="${padT+gH}" stroke="#475569" stroke-width="1"/>
+      </svg>
+      <div style="display:flex;gap:16px;justify-content:center;margin-top:8px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#94a3b8"><span style="width:12px;height:12px;background:#3b82f6;border-radius:2px;display:inline-block"></span>Receita</div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#94a3b8"><span style="width:12px;height:12px;background:#f87171;border-radius:2px;display:inline-block"></span>Despesas</div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#94a3b8"><span style="width:12px;height:12px;background:#22c55e;border-radius:2px;display:inline-block"></span>Lucro</div>
+      </div>
+    `;
+
+    el.innerHTML = tabela + grafico;
   },
 
   _trocarPeriodoDRE() {
@@ -711,9 +847,12 @@ async function renderGrafico(mesIni, anoIni, mesFim, anoFim, mostrar) {
   if (!el) return;
   el.innerHTML = '<div class="text-soft" style="text-align:center;padding:20px">Carregando gráfico...</div>';
 
-  const rOPs = await Api.get('listarOPs', { status: 'Não Iniciado,Em Produção,Finalizado' });
-const rApont = await Api.get('listarApontamentos', {});
-const rProds = await Api.get('listarProdutos', { ativo: 'true' });
+  const [rOPs, rApont, rProds] = await Promise.all([
+    Api.get('listarOPs', {}),
+    Api.get('listarApontamentos', {}),
+    Api.get('listarProdutos', { ativo: 'true' })
+  ]);
+
   const ops = rOPs.ok ? rOPs.dados : [];
   const apont = rApont.ok ? rApont.dados : [];
   const produtos = rProds.ok ? rProds.dados : [];
@@ -773,7 +912,7 @@ const rProds = await Api.get('listarProdutos', { ativo: 'true' });
     const hKg = (recebidoKg[i] / maxKg) * gH;
     const hUn = (produzidoUn[i] / maxUn) * gH;
 
-  iif (showEnt) {
+    if (showEnt) {
       barsEnt += `<rect x="${x - barW - 2}" y="${padT + scaleKg(recebidoKg[i])}" width="${barW}" height="${hKg}" fill="#3b82f6" rx="3" opacity="0.85">
         <title>Recebido: ${recebidoKg[i].toFixed(1)} kg</title></rect>`;
     }
