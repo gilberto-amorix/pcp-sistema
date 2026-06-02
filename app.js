@@ -722,18 +722,30 @@ const Telas = {
       return;
     }
 
+    // Cache global para exportação
+    window._dreComparativaDados = dados;
+
     // Tabela comparativa
     const linhas = ['receita', 'despesas_op', 'despesas_pessoas', 'lucro'];
     const labels = { receita: '(+) Receita Bruta', despesas_op: '(−) Desp. Operacionais', despesas_pessoas: '(−) Desp. Pessoas', lucro: '(=) Lucro Líquido' };
     const cores = { receita: 'text-verde', despesas_op: 'text-vermelho', despesas_pessoas: 'text-vermelho', lucro: '' };
 
+    // Totalizadores por linha
+    const totais = {};
+    linhas.forEach(l => { totais[l] = dados.reduce((a,d)=>a+(parseFloat(d[l])||0),0); });
+
     const tabela = `
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:10px">
+        <button class="btn btn-secondary btn-sm" onclick="(function(){if(!window._dreComparativaDados)return;const d=window._dreComparativaDados;const h=['Indicador',...d.map(x=>x.mes)];const l=[['(+) Receita Bruta',...d.map(x=>parseFloat(x.receita||0).toFixed(2))],['(-) Desp. Operacionais',...d.map(x=>parseFloat(x.despesas_op||0).toFixed(2))],['(-) Desp. Pessoas',...d.map(x=>parseFloat(x.despesas_pessoas||0).toFixed(2))],['(=) Lucro Liquido',...d.map(x=>parseFloat(x.lucro||0).toFixed(2))]];Exportar.excel('DRE_Comparativa',h,l)})()">📊 Excel</button>
+        <button class="btn btn-secondary btn-sm" onclick="Exportar.pdf('drec-container','DRE Comparativa')">🖨️ PDF</button>
+      </div>
       <div style="overflow-x:auto;margin-bottom:20px">
         <table style="min-width:${100 + dados.length * 130}px">
           <thead>
             <tr>
               <th style="text-align:left;min-width:160px">Indicador</th>
               ${dados.map(d => `<th style="text-align:right">${d.mes}</th>`).join('')}
+              <th style="text-align:right">Total</th>
             </tr>
           </thead>
           <tbody>
@@ -745,6 +757,7 @@ const Telas = {
                   const cls = l === 'lucro' ? (v >= 0 ? 'text-verde' : 'text-vermelho') : cores[l];
                   return `<td style="text-align:right" class="${cls}">${moeda(v)}</td>`;
                 }).join('')}
+                <td style="text-align:right;font-weight:700" class="${l==='lucro'?(totais[l]>=0?'text-verde':'text-vermelho'):cores[l]}">${moeda(totais[l])}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -1027,10 +1040,73 @@ function htmlGrafico() {
   `;
 }
 
+
+// ============================================================
+// EXPORTAÇÃO — PDF e Excel para blocos do Dashboard
+// ============================================================
+const Exportar = {
+  excel(titulo, headers, linhas) {
+    const BOM = '\uFEFF';
+    const sep = ';';
+    const linhaHeader = headers.join(sep);
+    const linhasDados = linhas.map(l => l.map(c => {
+      const s = String(c ?? '').replace(/"/g,'""');
+      return s.includes(sep) || s.includes('\n') ? `"${s}"` : s;
+    }).join(sep));
+    const csv = BOM + [linhaHeader, ...linhasDados].join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = titulo.replace(/[^a-z0-9]/gi,'_') + '.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    Toast.show('Excel exportado!');
+  },
+
+  pdf(idBloco, titulo) {
+    const el = document.getElementById(idBloco);
+    if (!el) { Toast.show('Bloco não encontrado.', 'erro'); return; }
+    const win = window.open('', '_blank', 'width=900,height=700');
+    win.document.write(`<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8"><title>${titulo}</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:Arial,sans-serif; font-size:12px; color:#111; padding:24px; background:#fff; }
+  h2 { font-size:15px; font-weight:700; margin-bottom:14px; border-bottom:2px solid #333; padding-bottom:6px; }
+  table { width:100%; border-collapse:collapse; margin-bottom:12px; }
+  th { background:#1e293b; color:#fff; padding:7px 10px; text-align:left; font-size:11px; }
+  td { padding:6px 10px; border-bottom:1px solid #e2e8f0; font-size:11px; }
+  tr:nth-child(even) td { background:#f8fafc; }
+  .tfoot-row td { background:#f1f5f9; font-weight:700; border-top:2px solid #334155; }
+  .text-verde { color:#16a34a; font-weight:700; }
+  .text-vermelho { color:#dc2626; font-weight:700; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:600; }
+  .btn,.btn-icon,button { display:none !important; }
+  .expansivel-conteudo { display:block !important; max-height:none !important; overflow:visible !important; }
+  .card-lista { display:none !important; }
+  @media print { body{padding:10px} @page{margin:1cm;size:A4 landscape} }
+</style></head>
+<body><h2>${titulo}</h2>${el.innerHTML}
+<script>window.onload=function(){window.print()}<\/script>
+</body></html>`);
+    win.document.close();
+  }
+};
+
+// Botões de exportação padrão para cada bloco
+function btnExport(idPdf, titulo, fnExcel) {
+  return `<div style="display:flex;gap:8px;margin-left:auto;align-items:center">
+    <button class="btn btn-secondary btn-sm" onclick="${fnExcel}" title="Exportar Excel">📊 Excel</button>
+    <button class="btn btn-secondary btn-sm" onclick="Exportar.pdf('${idPdf}','${titulo}')" title="Exportar PDF">🖨️ PDF</button>
+  </div>`;
+}
+
+
 // ============================================================
 // RENDERS DO DASHBOARD
 // ============================================================
 function renderDashboardOperador(r) {
+  const totalKgPend = r.pendentes.reduce((a,op)=>a+(parseFloat(op.quantidade_recebida_kg)||0),0);
   const cardsOPs = gerarCardsTabela(r.pendentes, [
     { label: 'Nº OP', campo: 'numero_op' },
     { label: 'Produto', campo: 'produto_descricao' },
@@ -1046,8 +1122,11 @@ function renderDashboardOperador(r) {
       <div class="resumo-card"><div class="num num-amarelo">${r.resumo.em_producao}</div><div class="label">Em Produção</div></div>
       <div class="resumo-card"><div class="num num-verde">${r.resumo.finalizadas_mes}</div><div class="label">Finalizadas no Mês</div></div>
     </div>
-    <div class="card">
-      <div class="card-titulo">📋 OPs Pendentes</div>
+    <div class="card" id="bloco-ops-pendentes">
+      <div class="card-titulo" style="display:flex;align-items:center;gap:8px">
+        <span>📋 OPs Pendentes</span>
+        ${btnExport('bloco-ops-pendentes','OPs Pendentes',`(function(){const d=${JSON.stringify ? 'JSON.parse(document.getElementById(\'bloco-ops-pendentes\').dataset.pendentes||\'[]\')' : '[]'};const h=['Nº OP','Produto Master','Data','Qtde (kg)','Status'];const l=_dashPendentes.map(op=>[op.numero_op,op.produto_descricao,dataFormatada(op.data_criacao),op.quantidade_recebida_kg,op.status]);const tk=_dashPendentes.reduce((a,op)=>a+(parseFloat(op.quantidade_recebida_kg)||0),0);l.push(['','','TOTAL',tk.toFixed(2)+' kg','']);Exportar.excel('OPs_Pendentes',h,l)})()`)}
+      </div>
       <div class="tabela-wrap">
         <table>
           <thead><tr><th>Nº OP</th><th>Produto Master</th><th>Data</th><th>Qtde (kg)</th><th>Status</th><th>Ação</th></tr></thead>
@@ -1061,6 +1140,7 @@ function renderDashboardOperador(r) {
               <td><button class="btn btn-sm btn-verde" onclick="App.navegar('apontamento');setTimeout(()=>Telas.apontamento('${op.id}'),100)">Apontar</button></td>
             </tr>`).join('')}
           </tbody>
+          <tfoot><tr class="tfoot-row"><td colspan="3"><strong>Total</strong></td><td><strong>${totalKgPend.toFixed(2)} kg</strong></td><td colspan="2"></td></tr></tfoot>
         </table>
         ${cardsOPs}
       </div>
@@ -1068,11 +1148,28 @@ function renderDashboardOperador(r) {
   `;
 }
 
+// Variáveis para cache dos dados do dashboard (usadas na exportação Excel)
+let _dashFat = [], _dashRec = [], _dashProd = [], _dashPendentes = [], _dashFatTotal = 0, _dashRecTotal = 0;
+
 function renderDashboardAdmin(r, mes, ano) {
   const op = r.operador;
   const fat = r.faturamento;
   const rec = r.recebimento;
   const prod = r.producao;
+
+  // Cache para exportação Excel
+  _dashFat = fat.breakdown || [];
+  _dashFatTotal = fat.total || 0;
+  _dashRec = rec.analitico || [];
+  _dashRecTotal = rec.total_kg || 0;
+  _dashProd = prod || [];
+  _dashPendentes = op.pendentes || [];
+
+  // Totalizadores
+  const totalQtdeFat = fat.breakdown.reduce((a,b)=>a+(parseFloat(b.qtde)||0),0);
+  const totalSubtotalFat = fat.breakdown.reduce((a,b)=>a+(parseFloat(b.subtotal)||0),0);
+  const totalKgRec = rec.analitico.reduce((a,i)=>a+(parseFloat(i.qtde_kg)||0),0);
+  const totalUnProd = prod.reduce((a,p)=>a+(parseFloat(p.total_unidades)||0),0);
 
   return `
     <div class="page-titulo">📊 Dashboard Admin</div>
@@ -1080,12 +1177,18 @@ function renderDashboardAdmin(r, mes, ano) {
       ${seletorMesAno(mes, ano, 'sel-mes', 'sel-ano', '')}
     </div>
     ${renderDashboardOperador(op)}
-    <div class="card">
-      <div class="card-titulo">💰 Faturamento do Período</div>
+
+    <!-- FATURAMENTO -->
+    <div class="card" id="bloco-faturamento">
+      <div class="card-titulo" style="display:flex;align-items:center;gap:8px">
+        <span>💰 Faturamento do Período</span>
+        ${btnExport('bloco-faturamento','Faturamento do Periodo',`(function(){const h=['Produto Final','Qtde Produzida','Valor Unit. (R$)','Subtotal (R$)'];const l=_dashFat.map(b=>[b.produto,b.qtde,parseFloat(b.valor_unitario||0).toFixed(2),parseFloat(b.subtotal||0).toFixed(2)]);l.push(['TOTAL',_dashFat.reduce((a,b)=>a+(parseFloat(b.qtde)||0),0),'',parseFloat(_dashFatTotal||0).toFixed(2)]);Exportar.excel('Faturamento',h,l)})()`)}
+      </div>
       <div style="font-size:28px;font-weight:800;color:var(--verde-light);margin-bottom:16px">${moeda(fat.total)}</div>
       <div class="tabela-wrap"><table>
         <thead><tr><th>Produto Final</th><th>Qtde Produzida</th><th>Valor Unit.</th><th>Subtotal</th></tr></thead>
         <tbody>${fat.breakdown.map(b=>`<tr><td>${b.produto}</td><td>${b.qtde}</td><td>${moeda(b.valor_unitario)}</td><td>${moeda(b.subtotal)}</td></tr>`).join('')}</tbody>
+        <tfoot><tr class="tfoot-row"><td><strong>Total</strong></td><td><strong>${totalQtdeFat}</strong></td><td></td><td><strong>${moeda(totalSubtotalFat)}</strong></td></tr></tfoot>
       </table>
       ${gerarCardsTabela(fat.breakdown, [
         { label: 'Produto', campo: 'produto' },
@@ -1095,13 +1198,19 @@ function renderDashboardAdmin(r, mes, ano) {
       ])}
       </div>
     </div>
-    <div class="card">
-      <div class="card-titulo">⚖️ Recebimento de Matéria-Prima — Total: <span class="text-verde">${rec.total_kg} kg</span></div>
+
+    <!-- RECEBIMENTO -->
+    <div class="card" id="bloco-recebimento">
+      <div class="card-titulo" style="display:flex;align-items:center;gap:8px">
+        <span>⚖️ Recebimento de Matéria-Prima — Total: <span class="text-verde">${rec.total_kg} kg</span></span>
+        ${btnExport('bloco-recebimento','Recebimento de Materia-Prima',`(function(){const h=['Data','Nº OP','Produto','Qtde (kg)'];const l=_dashRec.map(i=>[dataFormatada(i.data),i.numero_op,i.produto,parseFloat(i.qtde_kg||0).toFixed(2)]);l.push(['','','TOTAL',parseFloat(_dashRecTotal||0).toFixed(2)]);Exportar.excel('Recebimento',h,l)})()`)}
+      </div>
       <button class="btn btn-secondary btn-sm" onclick="toggleExpansivel('rec-analitico')">Ver analítico</button>
       <div id="rec-analitico" class="expansivel-conteudo mt-16">
         <div class="tabela-wrap"><table>
           <thead><tr><th>Data</th><th>OP</th><th>Produto</th><th>Qtde (kg)</th></tr></thead>
           <tbody>${rec.analitico.map(i=>`<tr><td>${dataFormatada(i.data)}</td><td>${i.numero_op}</td><td>${i.produto}</td><td>${i.qtde_kg}</td></tr>`).join('')}</tbody>
+          <tfoot><tr class="tfoot-row"><td colspan="3"><strong>Total</strong></td><td><strong>${totalKgRec.toFixed(2)} kg</strong></td></tr></tfoot>
         </table>
         ${gerarCardsTabela(rec.analitico, [
           { label: 'Data', render: i => dataFormatada(i.data) },
@@ -1112,11 +1221,17 @@ function renderDashboardAdmin(r, mes, ano) {
         </div>
       </div>
     </div>
-    <div class="card">
-      <div class="card-titulo">🏭 Produção por Produto Final</div>
+
+    <!-- PRODUÇÃO -->
+    <div class="card" id="bloco-producao">
+      <div class="card-titulo" style="display:flex;align-items:center;gap:8px">
+        <span>🏭 Produção por Produto Final</span>
+        ${btnExport('bloco-producao','Producao por Produto Final',`(function(){const h=['Produto Final','Total Unidades'];const l=_dashProd.map(p=>[p.produto,p.total_unidades]);l.push(['TOTAL',_dashProd.reduce((a,p)=>a+(parseFloat(p.total_unidades)||0),0)]);Exportar.excel('Producao',h,l)})()`)}
+      </div>
       <div class="tabela-wrap"><table>
         <thead><tr><th>Produto Final</th><th>Total Unidades</th></tr></thead>
         <tbody>${prod.map(p=>`<tr><td>${p.produto}</td><td>${p.total_unidades}</td></tr>`).join('')}</tbody>
+        <tfoot><tr class="tfoot-row"><td><strong>Total</strong></td><td><strong>${totalUnProd}</strong></td></tr></tfoot>
       </table>
       ${gerarCardsTabela(prod, [
         { label: 'Produto', campo: 'produto' },
@@ -1447,6 +1562,13 @@ const Autocomplete = {
 // INICIALIZAÇÃO
 // ============================================================
 document.addEventListener('DOMContentLoaded', () => {
+  // Estilos para totalizadores e exportação
+  const styleEl = document.createElement('style');
+  styleEl.textContent = `
+    .tfoot-row td { background: var(--bg3, #1e293b) !important; font-weight: 700; border-top: 2px solid var(--border, #334155); color: var(--text, #f1f5f9); }
+    .card-titulo { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+  `;
+  document.head.appendChild(styleEl);
   if (Estado.token && Estado.perfil) {
     App.iniciarApp();
   }
