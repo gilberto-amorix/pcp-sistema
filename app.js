@@ -192,7 +192,7 @@ const App = {
     const email = document.getElementById('reset-email').value.trim();
     if (!email) { Toast.show('Informe seu e-mail.', 'erro'); return; }
     const r = await Api.post('resetSenha', { email });
-    if (r.ok) { Toast.show('Link enviado! Verifique seu e-mail.'); this.mostrarLogin(); }
+    if (r.ok) { Toast.show('Nova senha enviada para seu e-mail!'); this.mostrarLogin(); }
     else Toast.show(r.erro, 'erro');
   },
 
@@ -279,7 +279,6 @@ const Telas = {
       if (!r.ok) { el.innerHTML = `<p class="text-vermelho">${r.erro}</p>`; return; }
       el.innerHTML = htmlGrafico() + renderDashboardOperador(r);
     }
-    // Carregar gráfico com valores padrão
     setTimeout(() => Telas._atualizarGrafico(), 100);
   },
 
@@ -627,7 +626,6 @@ const Telas = {
     const d = r.dre;
     const lucroClass = d.lucro_liquido >= 0 ? 'text-verde' : 'text-vermelho';
 
-    // Padrão comparativo: últimos 6 meses
     const hoje = new Date();
     let mIni = hoje.getMonth() - 4; let aIni = hoje.getFullYear();
     if (mIni <= 0) { mIni += 12; aIni--; }
@@ -722,15 +720,12 @@ const Telas = {
       return;
     }
 
-    // Cache global para exportação
     window._dreComparativaDados = dados;
 
-    // Tabela comparativa
     const linhas = ['receita', 'despesas_op', 'despesas_pessoas', 'lucro'];
     const labels = { receita: '(+) Receita Bruta', despesas_op: '(−) Desp. Operacionais', despesas_pessoas: '(−) Desp. Pessoas', lucro: '(=) Lucro Líquido' };
     const cores = { receita: 'text-verde', despesas_op: 'text-vermelho', despesas_pessoas: 'text-vermelho', lucro: '' };
 
-    // Totalizadores por linha
     const totais = {};
     linhas.forEach(l => { totais[l] = dados.reduce((a,d)=>a+(parseFloat(d[l])||0),0); });
 
@@ -765,7 +760,6 @@ const Telas = {
       </div>
     `;
 
-    // Gráfico SVG
     const W = el.offsetWidth || 700;
     const H = 280;
     const padL = 70, padR = 20, padT = 30, padB = 50;
@@ -781,7 +775,6 @@ const Telas = {
 
     let barsReceita = '', barsDespesas = '', barsLucro = '', xLabels = '', gridLines = '', yAxis = '';
 
-    // Grid
     for (let i = 0; i <= 4; i++) {
       const y = padT + (gH / 4) * i;
       const val = maxV - (maxV / 4) * i;
@@ -791,22 +784,14 @@ const Telas = {
 
     dados.forEach((d, i) => {
       const x = padL + gap * i + gap / 2;
-
-      // Receita
       const hRec = (d.receita / maxV) * gH;
       barsReceita += `<rect x="${x - barW*1.5 - 2}" y="${padT + scaleV(d.receita)}" width="${barW}" height="${hRec}" fill="#3b82f6" rx="2" opacity="0.85"/>`;
-
-      // Despesas total
       const totalDesp = d.despesas_op + d.despesas_pessoas;
       const hDesp = (totalDesp / maxV) * gH;
       barsDespesas += `<rect x="${x - barW/2}" y="${padT + scaleV(totalDesp)}" width="${barW}" height="${hDesp}" fill="#f87171" rx="2" opacity="0.85"/>`;
-
-      // Lucro
       const hLuc = (Math.abs(d.lucro) / maxV) * gH;
       const corLucro = d.lucro >= 0 ? '#22c55e' : '#ef4444';
       barsLucro += `<rect x="${x + barW/2 + 2}" y="${padT + scaleV(Math.abs(d.lucro))}" width="${barW}" height="${hLuc}" fill="${corLucro}" rx="2" opacity="0.85"/>`;
-
-      // Label X
       xLabels += `<text x="${x}" y="${H-8}" text-anchor="middle" fill="#94a3b8" font-size="10">${d.mes}</text>`;
     });
 
@@ -870,7 +855,6 @@ async function renderGrafico(mesIni, anoIni, mesFim, anoFim, mostrar) {
   const apont = rApont.ok ? rApont.dados : [];
   const produtos = rProds.ok ? rProds.dados : [];
 
-  // Gerar lista de meses no intervalo
   const meses = [];
   let y = parseInt(anoIni), m = parseInt(mesIni);
   const yFim = parseInt(anoFim), mFim = parseInt(mesFim);
@@ -883,7 +867,6 @@ async function renderGrafico(mesIni, anoIni, mesFim, anoFim, mostrar) {
   const nomesMeses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   const labels = meses.map(x => `${nomesMeses[x.m-1]}/${x.y}`);
 
-  // Recebido em kg por mês
   const recebidoKg = meses.map(({ y, m }) =>
     ops.filter(op => {
       const d = new Date(op.data_criacao);
@@ -891,7 +874,6 @@ async function renderGrafico(mesIni, anoIni, mesFim, anoFim, mostrar) {
     }).reduce((acc, op) => acc + (parseFloat(op.quantidade_recebida_kg) || 0), 0)
   );
 
-  // Produzido em unidades por mês
   const produzidoUn = meses.map(({ y, m }) =>
     apont.filter(ap => {
       const d = new Date(ap.data_apontamento);
@@ -899,7 +881,6 @@ async function renderGrafico(mesIni, anoIni, mesFim, anoFim, mostrar) {
     }).reduce((acc, ap) => acc + (parseFloat(ap.quantidade_produzida) || 0), 0)
   );
 
-  // Montar SVG do gráfico
   const W = el.offsetWidth || 600;
   const H = 260;
   const padL = 60, padR = 20, padT = 30, padB = 50;
@@ -918,7 +899,6 @@ async function renderGrafico(mesIni, anoIni, mesFim, anoFim, mostrar) {
   const showEnt = mostrar !== 'saida';
   const showSai = mostrar !== 'entrada';
 
-  // Barras entradas
   let barsEnt = '', barsSai = '', linePoints = '', dots = '';
   labels.forEach((lb, i) => {
     const x = padL + gap * i + gap / 2;
@@ -935,7 +915,6 @@ async function renderGrafico(mesIni, anoIni, mesFim, anoFim, mostrar) {
     }
   });
 
-  // Linha de produção
   if (showSai && n > 1) {
     const pts = labels.map((lb, i) => {
       const x = padL + gap * i + gap / 2 + 2 + barW / 2;
@@ -950,7 +929,6 @@ async function renderGrafico(mesIni, anoIni, mesFim, anoFim, mostrar) {
     });
   }
 
-  // Eixo Y esquerdo (kg) e direito (un)
   const yTicks = 4;
   let yAxisKg = '', yAxisUn = '', gridLines = '';
   for (let i = 0; i <= yTicks; i++) {
@@ -962,14 +940,12 @@ async function renderGrafico(mesIni, anoIni, mesFim, anoFim, mostrar) {
     yAxisUn += `<text x="${W - padR + 6}" y="${y + 4}" text-anchor="start" fill="#94a3b8" font-size="11">${valUn >= 1000 ? (valUn/1000).toFixed(1)+'k' : valUn.toFixed(0)}</text>`;
   }
 
-  // Labels eixo X
   let xLabels = '';
   labels.forEach((lb, i) => {
     const x = padL + gap * i + gap / 2;
     xLabels += `<text x="${x}" y="${H - 8}" text-anchor="middle" fill="#94a3b8" font-size="11">${lb}</text>`;
   });
 
-  // Labels eixos
   const labelKg = showEnt ? `<text x="14" y="${H/2}" text-anchor="middle" fill="#3b82f6" font-size="11" transform="rotate(-90,14,${H/2})">Recebido (kg)</text>` : '';
   const labelUn = showSai ? `<text x="${W-8}" y="${H/2}" text-anchor="middle" fill="#22c55e" font-size="11" transform="rotate(90,${W-8},${H/2})">Produzido (un)</text>` : '';
 
@@ -1001,7 +977,6 @@ function htmlGrafico() {
   const selMes = (id, val) => meses.map((m,i) => `<option value="${i+1}" ${i+1==val?'selected':''}>${m}</option>`).join('');
   const selAno = (id, val) => anos.map(a => `<option value="${a}" ${a==val?'selected':''}>${a}</option>`).join('');
 
-  // Padrão: últimos 6 meses
   let mIni = mesAtual - 5; let aIni = anoAtual;
   if (mIni <= 0) { mIni += 12; aIni--; }
 
@@ -1040,9 +1015,8 @@ function htmlGrafico() {
   `;
 }
 
-
 // ============================================================
-// EXPORTAÇÃO — PDF e Excel para blocos do Dashboard
+// EXPORTAÇÃO — PDF e Excel
 // ============================================================
 const Exportar = {
   excel(titulo, headers, linhas) {
@@ -1093,7 +1067,6 @@ const Exportar = {
   }
 };
 
-// Botões de exportação padrão para cada bloco
 function btnExport(idPdf, titulo, fnExcel) {
   return `<div style="display:flex;gap:8px;margin-left:auto;align-items:center">
     <button class="btn btn-secondary btn-sm" onclick="${fnExcel}" title="Exportar Excel">📊 Excel</button>
@@ -1101,19 +1074,26 @@ function btnExport(idPdf, titulo, fnExcel) {
   </div>`;
 }
 
-
 // ============================================================
 // RENDERS DO DASHBOARD
 // ============================================================
 function renderDashboardOperador(r) {
   const totalKgPend = r.pendentes.reduce((a,op)=>a+(parseFloat(op.quantidade_recebida_kg)||0),0);
+
+  // Cards mobile — inclui botão Detalhes quando há info_embalagem
   const cardsOPs = gerarCardsTabela(r.pendentes, [
     { label: 'Nº OP', campo: 'numero_op' },
     { label: 'Produto', campo: 'produto_descricao' },
     { label: 'Data', render: op => dataFormatada(op.data_criacao) },
     { label: 'Qtde (kg)', campo: 'quantidade_recebida_kg' },
     { label: 'Status', render: op => badgeStatus(op.status) }
-  ], op => `<button class="btn btn-sm btn-verde" onclick="App.navegar('apontamento');setTimeout(()=>Telas.apontamento('${op.id}'),100)">Apontar</button>`);
+  ], op => {
+    const btnApontar = `<button class="btn btn-sm btn-verde" onclick="App.navegar('apontamento');setTimeout(()=>Telas.apontamento('${op.id}'),100)">Apontar</button>`;
+    const btnDetalhes = (op.info_embalagem && op.info_embalagem.length)
+      ? ` <button class="btn btn-sm btn-secondary" onclick='Acoes.abrirModalEmbalagem(${JSON.stringify(op.info_embalagem).replace(/'/g,"&#39;")}, "${op.numero_op}")'>📦 Detalhes</button>`
+      : '';
+    return btnApontar + btnDetalhes;
+  });
 
   return `
     <div class="page-titulo">📊 Dashboard</div>
@@ -1125,22 +1105,28 @@ function renderDashboardOperador(r) {
     <div class="card" id="bloco-ops-pendentes">
       <div class="card-titulo" style="display:flex;align-items:center;gap:8px">
         <span>📋 OPs Pendentes</span>
-        ${btnExport('bloco-ops-pendentes','OPs Pendentes',`(function(){const d=${JSON.stringify ? 'JSON.parse(document.getElementById(\'bloco-ops-pendentes\').dataset.pendentes||\'[]\')' : '[]'};const h=['Nº OP','Produto Master','Data','Qtde (kg)','Status'];const l=_dashPendentes.map(op=>[op.numero_op,op.produto_descricao,dataFormatada(op.data_criacao),op.quantidade_recebida_kg,op.status]);const tk=_dashPendentes.reduce((a,op)=>a+(parseFloat(op.quantidade_recebida_kg)||0),0);l.push(['','','TOTAL',tk.toFixed(2)+' kg','']);Exportar.excel('OPs_Pendentes',h,l)})()`)}
+        ${btnExport('bloco-ops-pendentes','OPs Pendentes',`(function(){const h=['Nº OP','Produto Master','Data','Qtde (kg)','Status'];const l=_dashPendentes.map(op=>[op.numero_op,op.produto_descricao,dataFormatada(op.data_criacao),op.quantidade_recebida_kg,op.status]);const tk=_dashPendentes.reduce((a,op)=>a+(parseFloat(op.quantidade_recebida_kg)||0),0);l.push(['','','TOTAL',tk.toFixed(2)+' kg','']);Exportar.excel('OPs_Pendentes',h,l)})()`)}
       </div>
       <div class="tabela-wrap">
         <table>
-          <thead><tr><th>Nº OP</th><th>Produto Master</th><th>Data</th><th>Qtde (kg)</th><th>Status</th><th>Ação</th></tr></thead>
+          <thead><tr><th>Nº OP</th><th>Produto Master</th><th>Data</th><th>Qtde (kg)</th><th>Status</th><th>Ação</th><th>Embalagem</th></tr></thead>
           <tbody>
-            ${r.pendentes.map(op=>`<tr>
-              <td><strong>${op.numero_op}</strong></td>
-              <td>${op.produto_descricao}</td>
-              <td>${dataFormatada(op.data_criacao)}</td>
-              <td>${op.quantidade_recebida_kg}</td>
-              <td>${badgeStatus(op.status)}</td>
-              <td><button class="btn btn-sm btn-verde" onclick="App.navegar('apontamento');setTimeout(()=>Telas.apontamento('${op.id}'),100)">Apontar</button></td>
-            </tr>`).join('')}
+            ${r.pendentes.map(op => {
+              const btnDetalhes = (op.info_embalagem && op.info_embalagem.length)
+                ? `<button class="btn btn-sm btn-secondary" onclick='Acoes.abrirModalEmbalagem(${JSON.stringify(op.info_embalagem).replace(/'/g,"&#39;")}, "${op.numero_op}")'>📦 Detalhes</button>`
+                : '<span class="text-soft" style="font-size:11px">—</span>';
+              return `<tr>
+                <td><strong>${op.numero_op}</strong></td>
+                <td>${op.produto_descricao}</td>
+                <td>${dataFormatada(op.data_criacao)}</td>
+                <td>${op.quantidade_recebida_kg}</td>
+                <td>${badgeStatus(op.status)}</td>
+                <td><button class="btn btn-sm btn-verde" onclick="App.navegar('apontamento');setTimeout(()=>Telas.apontamento('${op.id}'),100)">Apontar</button></td>
+                <td>${btnDetalhes}</td>
+              </tr>`;
+            }).join('')}
           </tbody>
-          <tfoot><tr class="tfoot-row"><td colspan="3"><strong>Total</strong></td><td><strong>${totalKgPend.toFixed(2)} kg</strong></td><td colspan="2"></td></tr></tfoot>
+          <tfoot><tr class="tfoot-row"><td colspan="3"><strong>Total</strong></td><td><strong>${totalKgPend.toFixed(2)} kg</strong></td><td colspan="3"></td></tr></tfoot>
         </table>
         ${cardsOPs}
       </div>
@@ -1148,7 +1134,6 @@ function renderDashboardOperador(r) {
   `;
 }
 
-// Variáveis para cache dos dados do dashboard (usadas na exportação Excel)
 let _dashFat = [], _dashRec = [], _dashProd = [], _dashPendentes = [], _dashFatTotal = 0, _dashRecTotal = 0;
 
 function renderDashboardAdmin(r, mes, ano) {
@@ -1157,7 +1142,6 @@ function renderDashboardAdmin(r, mes, ano) {
   const rec = r.recebimento;
   const prod = r.producao;
 
-  // Cache para exportação Excel
   _dashFat = fat.breakdown || [];
   _dashFatTotal = fat.total || 0;
   _dashRec = rec.analitico || [];
@@ -1165,7 +1149,6 @@ function renderDashboardAdmin(r, mes, ano) {
   _dashProd = prod || [];
   _dashPendentes = op.pendentes || [];
 
-  // Totalizadores
   const totalQtdeFat = fat.breakdown.reduce((a,b)=>a+(parseFloat(b.qtde)||0),0);
   const totalSubtotalFat = fat.breakdown.reduce((a,b)=>a+(parseFloat(b.subtotal)||0),0);
   const totalKgRec = rec.analitico.reduce((a,i)=>a+(parseFloat(i.qtde_kg)||0),0);
@@ -1178,7 +1161,6 @@ function renderDashboardAdmin(r, mes, ano) {
     </div>
     ${renderDashboardOperador(op)}
 
-    <!-- FATURAMENTO -->
     <div class="card" id="bloco-faturamento">
       <div class="card-titulo" style="display:flex;align-items:center;gap:8px">
         <span>💰 Faturamento do Período</span>
@@ -1199,7 +1181,6 @@ function renderDashboardAdmin(r, mes, ano) {
       </div>
     </div>
 
-    <!-- RECEBIMENTO -->
     <div class="card" id="bloco-recebimento">
       <div class="card-titulo" style="display:flex;align-items:center;gap:8px">
         <span>⚖️ Recebimento de Matéria-Prima — Total: <span class="text-verde">${rec.total_kg} kg</span></span>
@@ -1222,7 +1203,6 @@ function renderDashboardAdmin(r, mes, ano) {
       </div>
     </div>
 
-    <!-- PRODUÇÃO -->
     <div class="card" id="bloco-producao">
       <div class="card-titulo" style="display:flex;align-items:center;gap:8px">
         <span>🏭 Produção por Produto Final</span>
@@ -1373,6 +1353,39 @@ const Acoes = {
     }
   },
 
+  // ── MODAL DE EMBALAGEM (novo) ────────────────────────────
+  abrirModalEmbalagem(infoEmbalagem, numeroOp) {
+    if (!infoEmbalagem || infoEmbalagem.length === 0) {
+      Toast.show('Nenhuma informação de embalagem cadastrada para esta OP.', 'erro');
+      return;
+    }
+    const linhas = infoEmbalagem.map(pf => `
+      <div style="border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px;background:var(--bg3)">
+        <div style="font-weight:700;font-size:14px;margin-bottom:12px;color:var(--azul-light)">📦 ${pf.descricao || '—'}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px">
+          <div>
+            <div style="color:var(--text-soft);font-size:11px;text-transform:uppercase;margin-bottom:3px">Descrição da Embalagem</div>
+            <div style="font-weight:600">${pf.embalagem || '—'}</div>
+          </div>
+          <div>
+            <div style="color:var(--text-soft);font-size:11px;text-transform:uppercase;margin-bottom:3px">Tipo de Embalagem</div>
+            <div style="font-weight:600">${pf.tipo_embalagem ? pf.tipo_embalagem.charAt(0).toUpperCase() + pf.tipo_embalagem.slice(1) : '—'}</div>
+          </div>
+          <div>
+            <div style="color:var(--text-soft);font-size:11px;text-transform:uppercase;margin-bottom:3px">Peso da Embalagem Final</div>
+            <div style="font-weight:600">${pf.peso_final ? pf.peso_final + ' kg' : '—'}</div>
+          </div>
+          <div>
+            <div style="color:var(--text-soft);font-size:11px;text-transform:uppercase;margin-bottom:3px">Tipo de Rótulo</div>
+            <div style="font-weight:600">${pf.tipo_rotulo || '—'}</div>
+          </div>
+        </div>
+      </div>
+    `).join('');
+    Modal.abrir(`📦 Embalagens — OP ${numeroOp}`, linhas, null, true);
+  },
+
+  // ── CADASTROS ────────────────────────────────────────────
   abrirModalProduto(prod, masters) {
     const isNovo = !prod;
     const p = prod || {};
@@ -1414,6 +1427,8 @@ const Acoes = {
             <option value="vacuo" ${p.tipo_embalagem==='vacuo'?'selected':''}>Vácuo</option>
             <option value="almofada" ${p.tipo_embalagem==='almofada'?'selected':''}>Almofada</option>
           </select></div>
+        <div class="form-group" id="mp-g-trot"><label>Tipo de Rótulo</label>
+          <input id="mp-t-rot" value="${p.tipo_rotulo||''}" placeholder="Ex: Confeitaria, Food-Service..." /></div>
         <div class="form-group" id="mp-g-val"><label>Valor cobrado por unidade (R$)</label>
           <input id="mp-val" type="number" step=".01" value="${p.valor_cobrado_unidade||''}" /></div>
       </div>
@@ -1436,6 +1451,7 @@ const Acoes = {
         dados.custo_embalagem = document.getElementById('mp-c-emb').value;
         dados.custo_rotulo = document.getElementById('mp-c-rot').value;
         dados.tipo_embalagem = document.getElementById('mp-t-emb').value;
+        dados.tipo_rotulo = document.getElementById('mp-t-rot').value;
         dados.valor_cobrado_unidade = document.getElementById('mp-val').value;
       }
       const r = await Api.post('salvarProduto', dados);
@@ -1449,7 +1465,7 @@ const Acoes = {
     const tipo = document.getElementById('mp-tipo').value;
     const master = tipo === 'master';
     ['mp-g-peso'].forEach(id => document.getElementById(id).style.display = master ? '' : 'none');
-    ['mp-g-master','mp-g-pesoF','mp-g-emb','mp-g-cemb','mp-g-crot','mp-g-temb','mp-g-val'].forEach(id => document.getElementById(id).style.display = master ? 'none' : '');
+    ['mp-g-master','mp-g-pesoF','mp-g-emb','mp-g-cemb','mp-g-crot','mp-g-temb','mp-g-trot','mp-g-val'].forEach(id => document.getElementById(id).style.display = master ? 'none' : '');
   },
 
   abrirModalFuncionario(func) {
@@ -1562,7 +1578,6 @@ const Autocomplete = {
 // INICIALIZAÇÃO
 // ============================================================
 document.addEventListener('DOMContentLoaded', () => {
-  // Estilos para totalizadores e exportação
   const styleEl = document.createElement('style');
   styleEl.textContent = `
     .tfoot-row td { background: var(--bg3, #1e293b) !important; font-weight: 700; border-top: 2px solid var(--border, #334155); color: var(--text, #f1f5f9); }
