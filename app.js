@@ -110,12 +110,16 @@ function dataFormatada(iso) {
   return d.toLocaleDateString('pt-BR');
 }
 
+// ============================================================
+// BADGE DE STATUS — inclui "Aguardando Coleta"
+// ============================================================
 function badgeStatus(status) {
   const mapa = {
-    'Não Iniciado': 'badge-cinza',
-    'Em Produção':  'badge-azul',
-    'Parcial':      'badge-amarelo',
-    'Finalizado':   'badge-verde'
+    'Não Iniciado':     'badge-cinza',
+    'Em Produção':      'badge-azul',
+    'Parcial':          'badge-amarelo',
+    'Aguardando Coleta':'badge-amarelo-escuro',
+    'Finalizado':       'badge-verde'
   };
   return `<span class="badge ${mapa[status] || 'badge-cinza'}">${status}</span>`;
 }
@@ -356,10 +360,11 @@ const Telas = {
   },
 
   // ==================== APONTAMENTO ====================
+  // Busca OPs com status: Não Iniciado, Em Produção E Aguardando Coleta
   async apontamento(opPreSelecionada = null) {
     const el = document.getElementById('tela-apontamento');
     const [rOPs, rProds] = await Promise.all([
-      Api.get('listarOPs', { status: 'Não Iniciado,Em Produção' }),
+      Api.get('listarOPs', { status: 'Não Iniciado,Em Produção,Aguardando Coleta' }),
       Api.get('listarProdutos', { ativo: 'true' })
     ]);
     const ops = rOPs.ok ? rOPs.dados : [];
@@ -367,7 +372,7 @@ const Telas = {
 
     const opOpts = ops.map(op => {
       const prod = produtos.find(p => p.id === op.produto_master_id);
-      return `<option value="${op.id}" data-master="${op.produto_master_id}" data-kg="${op.quantidade_recebida_kg}" ${opPreSelecionada === op.id ? 'selected' : ''}>${op.numero_op} — ${prod ? prod.descricao : ''} (${dataFormatada(op.data_criacao)})</option>`;
+      return `<option value="${op.id}" data-master="${op.produto_master_id}" data-kg="${op.quantidade_recebida_kg}" data-status="${op.status}" ${opPreSelecionada === op.id ? 'selected' : ''}>${op.numero_op} — ${prod ? prod.descricao : ''} (${dataFormatada(op.data_criacao)}) [${op.status}]</option>`;
     }).join('');
 
     el.innerHTML = `
@@ -388,8 +393,9 @@ const Telas = {
           <div class="form-group">
             <label>Tipo de Apontamento</label>
             <select id="ap-tipo" onchange="Acoes.calcularPerdaGanho()">
-              <option value="Parcial">Parcial</option>
-              <option value="Final">Final (Encerra a OP)</option>
+              <option value="Parcial">Parcial (continua em produção)</option>
+              <option value="Producao_Concluida">Produção Concluída (aguardando coleta)</option>
+              <option value="Coleta">Coleta (transportadora buscou — encerra OP)</option>
             </select>
           </div>
           <div class="form-group">
@@ -1080,15 +1086,18 @@ function btnExport(idPdf, titulo, fnExcel) {
 function renderDashboardOperador(r) {
   const totalKgPend = r.pendentes.reduce((a,op)=>a+(parseFloat(op.quantidade_recebida_kg)||0),0);
 
-  // Cards mobile — inclui botão Detalhes quando há info_embalagem
   const cardsOPs = gerarCardsTabela(r.pendentes, [
     { label: 'Nº OP', campo: 'numero_op' },
     { label: 'Produto', campo: 'produto_descricao' },
     { label: 'Data', render: op => dataFormatada(op.data_criacao) },
     { label: 'Qtde (kg)', campo: 'quantidade_recebida_kg' },
-    { label: 'Status', render: op => badgeStatus(op.status) }
+    { label: 'Status', render: op => badgeStatus(op.status) },
+    { label: 'Dias úteis', render: op => renderDiasUteis(op) }
   ], op => {
-    const btnApontar = `<button class="btn btn-sm btn-verde" onclick="App.navegar('apontamento');setTimeout(()=>Telas.apontamento('${op.id}'),100)">Apontar</button>`;
+    // OPs "Aguardando Coleta" só permitem apontamento de Coleta
+    const btnApontar = op.status !== 'Aguardando Coleta'
+      ? `<button class="btn btn-sm btn-verde" onclick="App.navegar('apontamento');setTimeout(()=>Telas.apontamento('${op.id}'),100)">Apontar</button>`
+      : `<button class="btn btn-sm btn-amarelo" onclick="App.navegar('apontamento');setTimeout(()=>Telas.apontamento('${op.id}'),100)">📦 Registrar Coleta</button>`;
     const btnDetalhes = (op.info_embalagem && op.info_embalagem.length)
       ? ` <button class="btn btn-sm btn-secondary" onclick='Acoes.abrirModalEmbalagem(${JSON.stringify(op.info_embalagem).replace(/'/g,"&#39;")}, "${op.numero_op}")'>📦 Detalhes</button>`
       : '';
@@ -1098,31 +1107,32 @@ function renderDashboardOperador(r) {
   return `
     <div class="page-titulo">📊 Dashboard</div>
     <div class="resumo-grid">
-      <div class="resumo-card"><div class="num num-azul">${r.resumo.nao_iniciado}</div><div class="label">Não Iniciadas</div></div>
-      <div class="resumo-card"><div class="num num-amarelo">${r.resumo.em_producao}</div><div class="label">Em Produção</div></div>
+      <div class="resumo-card"><div class="num num-cinza">${r.resumo.nao_iniciado}</div><div class="label">Não Iniciadas</div></div>
+      <div class="resumo-card"><div class="num num-azul">${r.resumo.em_producao}</div><div class="label">Em Produção</div></div>
+      <div class="resumo-card"><div class="num num-amarelo">${r.resumo.aguardando_coleta || 0}</div><div class="label">Aguardando Coleta</div></div>
       <div class="resumo-card"><div class="num num-verde">${r.resumo.finalizadas_mes}</div><div class="label">Finalizadas no Mês</div></div>
     </div>
     <div class="card" id="bloco-ops-pendentes">
       <div class="card-titulo" style="display:flex;align-items:center;gap:8px">
         <span>📋 OPs Pendentes</span>
-        ${btnExport('bloco-ops-pendentes','OPs Pendentes',`(function(){const h=['Nº OP','Produto Master','Data','Qtde (kg)','Status'];const l=_dashPendentes.map(op=>[op.numero_op,op.produto_descricao,dataFormatada(op.data_criacao),op.quantidade_recebida_kg,op.status]);const tk=_dashPendentes.reduce((a,op)=>a+(parseFloat(op.quantidade_recebida_kg)||0),0);l.push(['','','TOTAL',tk.toFixed(2)+' kg','']);Exportar.excel('OPs_Pendentes',h,l)})()`)}
+        ${btnExport('bloco-ops-pendentes','OPs Pendentes',`(function(){const h=['Nº OP','Produto Master','Data','Qtde (kg)','Status','Dias Úteis'];const l=_dashPendentes.map(op=>[op.numero_op,op.produto_descricao,dataFormatada(op.data_criacao),op.quantidade_recebida_kg,op.status,op.dias_uteis_aberta||0]);Exportar.excel('OPs_Pendentes',h,l)})()`)}
       </div>
       <div class="tabela-wrap">
         <table>
-          <thead><tr><th>Nº OP</th><th>Produto Master</th><th>Data</th><th>Qtde (kg)</th><th>Status</th><th>Ação</th><th>Embalagem</th></tr></thead>
+          <thead><tr><th>Nº OP</th><th>Produto Master</th><th>Data</th><th>Qtde (kg)</th><th>Status</th><th>Dias Úteis</th><th>Ação</th></tr></thead>
           <tbody>
             ${r.pendentes.map(op => {
-              const btnDetalhes = (op.info_embalagem && op.info_embalagem.length)
-                ? `<button class="btn btn-sm btn-secondary" onclick='Acoes.abrirModalEmbalagem(${JSON.stringify(op.info_embalagem).replace(/'/g,"&#39;")}, "${op.numero_op}")'>📦 Detalhes</button>`
-                : '<span class="text-soft" style="font-size:11px">—</span>';
-              return `<tr>
+              const btnApontar = op.status !== 'Aguardando Coleta'
+                ? `<button class="btn btn-sm btn-verde" onclick="App.navegar('apontamento');setTimeout(()=>Telas.apontamento('${op.id}'),100)">Apontar</button>`
+                : `<button class="btn btn-sm btn-amarelo" onclick="App.navegar('apontamento');setTimeout(()=>Telas.apontamento('${op.id}'),100)">📦 Registrar Coleta</button>`;
+              return `<tr class="${op.status === 'Aguardando Coleta' ? 'linha-aguardando-coleta' : ''}">
                 <td><strong>${op.numero_op}</strong></td>
                 <td>${op.produto_descricao}</td>
                 <td>${dataFormatada(op.data_criacao)}</td>
                 <td>${op.quantidade_recebida_kg}</td>
                 <td>${badgeStatus(op.status)}</td>
-                <td><button class="btn btn-sm btn-verde" onclick="App.navegar('apontamento');setTimeout(()=>Telas.apontamento('${op.id}'),100)">Apontar</button></td>
-                <td>${btnDetalhes}</td>
+                <td>${renderDiasUteis(op)}</td>
+                <td>${btnApontar}</td>
               </tr>`;
             }).join('')}
           </tbody>
@@ -1132,6 +1142,16 @@ function renderDashboardOperador(r) {
       </div>
     </div>
   `;
+}
+
+// Renderiza o campo de dias úteis com cor e indicador de encerrado
+function renderDiasUteis(op) {
+  const dias = op.dias_uteis_aberta || 0;
+  if (op.status === 'Aguardando Coleta') {
+    return `<span style="color:#854F0B;font-weight:600">${dias}d <span style="font-size:10px;opacity:.7">(encerrado)</span></span>`;
+  }
+  const cor = dias > 5 ? '#dc2626' : dias > 2 ? '#d97706' : '#16a34a';
+  return `<span style="color:${cor};font-weight:600">${dias}d</span>`;
 }
 
 let _dashFat = [], _dashRec = [], _dashProd = [], _dashPendentes = [], _dashFatTotal = 0, _dashRecTotal = 0;
@@ -1267,12 +1287,19 @@ const Acoes = {
     const opt = sel.options[sel.selectedIndex];
     const masterID = opt?.getAttribute('data-master');
     const kg = opt?.getAttribute('data-kg') || '';
+    const statusOp = opt?.getAttribute('data-status') || '';
     const selProd = document.getElementById('ap-produto-sel');
     const kgInput = document.getElementById('ap-kg-op');
+    const selTipo = document.getElementById('ap-tipo');
 
     Autocomplete._apSelId = null;
     Autocomplete._apKgOp = parseFloat(kg) || 0;
     if (kgInput) kgInput.value = kg ? kg + ' kg' : '';
+
+    // Se a OP está "Aguardando Coleta", pré-seleciona o tipo "Coleta"
+    if (statusOp === 'Aguardando Coleta' && selTipo) {
+      selTipo.value = 'Coleta';
+    }
 
     if (!masterID) {
       selProd.innerHTML = '<option value="">-- Selecione primeiro a OP --</option>';
@@ -1302,7 +1329,8 @@ const Acoes = {
     const pesoFinal = Autocomplete._apPesoFinal || 0;
     const resultado = document.getElementById('ap-resultado');
 
-    if (tipo !== 'Final' || !resultado) {
+    // Mostra resultado para Producao_Concluida e Coleta também
+    if (tipo !== 'Producao_Concluida' && tipo !== 'Coleta' && tipo !== 'Final' || !resultado) {
       if (resultado) resultado.style.display = 'none';
       return;
     }
@@ -1353,7 +1381,6 @@ const Acoes = {
     }
   },
 
-  // ── MODAL DE EMBALAGEM (novo) ────────────────────────────
   abrirModalEmbalagem(infoEmbalagem, numeroOp) {
     if (!infoEmbalagem || infoEmbalagem.length === 0) {
       Toast.show('Nenhuma informação de embalagem cadastrada para esta OP.', 'erro');
@@ -1385,7 +1412,6 @@ const Acoes = {
     Modal.abrir(`📦 Embalagens — OP ${numeroOp}`, linhas, null, true);
   },
 
-  // ── CADASTROS ────────────────────────────────────────────
   abrirModalProduto(prod, masters) {
     const isNovo = !prod;
     const p = prod || {};
@@ -1582,6 +1608,12 @@ document.addEventListener('DOMContentLoaded', () => {
   styleEl.textContent = `
     .tfoot-row td { background: var(--bg3, #1e293b) !important; font-weight: 700; border-top: 2px solid var(--border, #334155); color: var(--text, #f1f5f9); }
     .card-titulo { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+    .badge-amarelo-escuro { background: #854F0B; color: #FAEEDA; border: 1px solid #BA7517; }
+    .btn-amarelo { background: #854F0B; color: #FAEEDA; border: 1px solid #BA7517; border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+    .btn-amarelo:hover { background: #BA7517; }
+    .linha-aguardando-coleta td { background: rgba(186,117,23,0.08) !important; }
+    .num-cinza { color: var(--text-soft, #94a3b8); }
+    .num-amarelo { color: #d97706; }
   `;
   document.head.appendChild(styleEl);
   if (Estado.token && Estado.perfil) {
