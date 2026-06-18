@@ -364,7 +364,7 @@ const Telas = {
   async apontamento(opPreSelecionada = null) {
     const el = document.getElementById('tela-apontamento');
     const [rOPs, rProds] = await Promise.all([
-      Api.get('listarOPs', { status: 'Não Iniciado,Em Produção,Aguardando Coleta' }),
+      Api.get('listarOPs', { status: 'Não Iniciado|Em Produção|Aguardando Coleta' }),
       Api.get('listarProdutos', { ativo: 'true' })
     ]);
     const ops = rOPs.ok ? rOPs.dados : [];
