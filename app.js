@@ -16,13 +16,22 @@ const Estado = {
 };
 
 // ============================================================
+// CACHE DO DASHBOARD — evita chamadas duplicadas no gráfico
+// ============================================================
+const Cache = {
+  ops: null,
+  apontamentos: null,
+  produtos: null,
+};
+
+// ============================================================
 // API — Comunicação com o Apps Script (JSONP)
 // ============================================================
 const Api = {
   async get(action, params = {}) {
     Spinner.mostrar();
     return new Promise((resolve) => {
-      const cbName = 'cb_' + Date.now();
+      const cbName = 'cb_' + Date.now() + '_' + Math.random().toString(36).slice(2);
       const qs = new URLSearchParams({ action, token: Estado.token, ...params, callback: cbName }).toString();
       const script = document.createElement('script');
       script.src = `${API_URL}?${qs}`;
@@ -39,7 +48,7 @@ const Api = {
   async post(action, body = {}) {
     Spinner.mostrar();
     return new Promise((resolve) => {
-      const cbName = 'cb_' + Date.now();
+      const cbName = 'cb_' + Date.now() + '_' + Math.random().toString(36).slice(2);
       const params = new URLSearchParams({ action, token: Estado.token, ...body, callback: cbName }).toString();
       const script = document.createElement('script');
       script.src = `${API_URL}?${params}`;
@@ -70,7 +79,9 @@ const Toast = {
 
 const Spinner = {
   _el: null,
+  _count: 0,
   mostrar() {
+    this._count++;
     if (!this._el) {
       this._el = document.createElement('div');
       this._el.className = 'spinner-overlay';
@@ -79,7 +90,10 @@ const Spinner = {
     }
     this._el.style.display = 'flex';
   },
-  ocultar() { if (this._el) this._el.style.display = 'none'; }
+  ocultar() {
+    this._count = Math.max(0, this._count - 1);
+    if (this._count === 0 && this._el) this._el.style.display = 'none';
+  }
 };
 
 const Modal = {
@@ -269,31 +283,66 @@ const Telas = {
     const el = document.getElementById('tela-dashboard');
     el.innerHTML = '<div class="page-titulo">📊 Dashboard</div><div class="text-soft">Carregando...</div>';
 
+    // Limpa cache a cada abertura do dashboard para dados frescos
+    Cache.ops = null;
+    Cache.apontamentos = null;
+    Cache.produtos = null;
+
     if (Estado.perfil === 'admin') {
       const hoje = new Date();
       const mes = hoje.getMonth() + 1;
       const ano = hoje.getFullYear();
-      const r = await Api.get('dashboardAdmin', { mes, ano });
+
+      // Carrega dashboard e dados do gráfico em paralelo
+      const [r, rOPs, rApont, rProds] = await Promise.all([
+        Api.get('dashboardAdmin', { mes, ano }),
+        Api.get('listarOPs', {}),
+        Api.get('listarApontamentos', {}),
+        Api.get('listarProdutos', { ativo: 'true' })
+      ]);
+
+      // Salva no cache global para o gráfico usar sem novas chamadas
+      if (rOPs.ok)    Cache.ops          = rOPs.dados;
+      if (rApont.ok)  Cache.apontamentos = rApont.dados;
+      if (rProds.ok)  Cache.produtos     = rProds.dados;
+
       if (!r.ok) { el.innerHTML = `<p class="text-vermelho">${r.erro}</p>`; return; }
+
       el.innerHTML = htmlGrafico() + renderDashboardAdmin(r, mes, ano);
       document.getElementById('sel-mes').onchange = Telas._atualizarDashAdmin;
       document.getElementById('sel-ano').onchange = Telas._atualizarDashAdmin;
+
+      // Renderiza gráfico com dados já em cache — sem nova chamada de API
+      Telas._atualizarGrafico();
+
     } else {
-      const r = await Api.get('dashboardOperador');
+      // Operador: carrega dashboard e dados do gráfico em paralelo
+      const [r, rOPs, rApont, rProds] = await Promise.all([
+        Api.get('dashboardOperador'),
+        Api.get('listarOPs', {}),
+        Api.get('listarApontamentos', {}),
+        Api.get('listarProdutos', { ativo: 'true' })
+      ]);
+
+      if (rOPs.ok)    Cache.ops          = rOPs.dados;
+      if (rApont.ok)  Cache.apontamentos = rApont.dados;
+      if (rProds.ok)  Cache.produtos     = rProds.dados;
+
       if (!r.ok) { el.innerHTML = `<p class="text-vermelho">${r.erro}</p>`; return; }
+
       el.innerHTML = htmlGrafico() + renderDashboardOperador(r);
+      Telas._atualizarGrafico();
     }
-    setTimeout(() => Telas._atualizarGrafico(), 100);
   },
 
-  async _atualizarGrafico() {
+  _atualizarGrafico() {
     const mesIni  = document.getElementById('graf-mes-ini')?.value;
     const anoIni  = document.getElementById('graf-ano-ini')?.value;
     const mesFim  = document.getElementById('graf-mes-fim')?.value;
     const anoFim  = document.getElementById('graf-ano-fim')?.value;
     const mostrar = document.getElementById('graf-mostrar')?.value || 'ambos';
     if (!mesIni || !anoIni || !mesFim || !anoFim) return;
-    await renderGrafico(mesIni, anoIni, mesFim, anoFim, mostrar);
+    renderGrafico(mesIni, anoIni, mesFim, anoFim, mostrar);
   },
 
   async _atualizarDashAdmin() {
@@ -302,11 +351,19 @@ const Telas = {
     const r = await Api.get('dashboardAdmin', { mes, ano });
     if (!r.ok) { Toast.show(r.erro, 'erro'); return; }
     const el = document.getElementById('tela-dashboard');
-    el.innerHTML = renderDashboardAdmin(r, mes, ano);
+
+    // Preserva o bloco do gráfico e substitui só o conteúdo abaixo
+    const grafBlock = document.getElementById('bloco-grafico-dashboard');
+    const grafHTML = grafBlock ? grafBlock.outerHTML : htmlGrafico();
+
+    el.innerHTML = grafHTML + renderDashboardAdmin(r, mes, ano);
     document.getElementById('sel-mes').value = mes;
     document.getElementById('sel-ano').value = ano;
     document.getElementById('sel-mes').onchange = Telas._atualizarDashAdmin;
     document.getElementById('sel-ano').onchange = Telas._atualizarDashAdmin;
+
+    // Re-renderiza gráfico com cache existente (sem nova chamada)
+    Telas._atualizarGrafico();
   },
 
   // ==================== RECEBIMENTO ====================
@@ -360,7 +417,6 @@ const Telas = {
   },
 
   // ==================== APONTAMENTO ====================
-  // Busca OPs com status: Não Iniciado, Em Produção E Aguardando Coleta
   async apontamento(opPreSelecionada = null) {
     const el = document.getElementById('tela-apontamento');
     const [rOPs, rProds] = await Promise.all([
@@ -370,7 +426,11 @@ const Telas = {
     const ops = rOPs.ok ? rOPs.dados : [];
     const produtos = rProds.ok ? rProds.dados : [];
 
-    const opOpts = ops.map(op => {
+    // Filtra no frontend — evita problemas de encoding JSONP com múltiplos status
+    const statusPermitidos = ['Não Iniciado', 'Em Produção', 'Aguardando Coleta'];
+    const opsFiltradas = ops.filter(op => statusPermitidos.includes(op.status));
+
+    const opOpts = opsFiltradas.map(op => {
       const prod = produtos.find(p => p.id === op.produto_master_id);
       return `<option value="${op.id}" data-master="${op.produto_master_id}" data-kg="${op.quantidade_recebida_kg}" data-status="${op.status}" ${opPreSelecionada === op.id ? 'selected' : ''}>${op.numero_op} — ${prod ? prod.descricao : ''} (${dataFormatada(op.data_criacao)}) [${op.status}]</option>`;
     }).join('');
@@ -766,7 +826,7 @@ const Telas = {
       </div>
     `;
 
-    const W = el.offsetWidth || 700;
+    const W = 700;
     const H = 280;
     const padL = 70, padR = 20, padT = 30, padB = 50;
     const gW = W - padL - padR;
@@ -845,21 +905,29 @@ function seletorMesAno(mes, ano, idMes, idAno, callback) {
 
 // ============================================================
 // GRÁFICO DE RECEBIMENTO vs PRODUÇÃO
+// Usa dados do Cache quando disponíveis — sem chamadas extras de API
 // ============================================================
 async function renderGrafico(mesIni, anoIni, mesFim, anoFim, mostrar) {
   const el = document.getElementById('grafico-container');
   if (!el) return;
   el.innerHTML = '<div class="text-soft" style="text-align:center;padding:20px">Carregando gráfico...</div>';
 
-  const [rOPs, rApont, rProds] = await Promise.all([
-    Api.get('listarOPs', {}),
-    Api.get('listarApontamentos', {}),
-    Api.get('listarProdutos', { ativo: 'true' })
-  ]);
+  // Usa cache se disponível, caso contrário busca da API
+  let ops, apontamentos;
 
-  const ops = rOPs.ok ? rOPs.dados : [];
-  const apont = rApont.ok ? rApont.dados : [];
-  const produtos = rProds.ok ? rProds.dados : [];
+  if (Cache.ops && Cache.apontamentos) {
+    ops = Cache.ops;
+    apontamentos = Cache.apontamentos;
+  } else {
+    const [rOPs, rApont] = await Promise.all([
+      Api.get('listarOPs', {}),
+      Api.get('listarApontamentos', {})
+    ]);
+    ops = rOPs.ok ? rOPs.dados : [];
+    apontamentos = rApont.ok ? rApont.dados : [];
+    Cache.ops = ops;
+    Cache.apontamentos = apontamentos;
+  }
 
   const meses = [];
   let y = parseInt(anoIni), m = parseInt(mesIni);
@@ -873,21 +941,36 @@ async function renderGrafico(mesIni, anoIni, mesFim, anoFim, mostrar) {
   const nomesMeses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   const labels = meses.map(x => `${nomesMeses[x.m-1]}/${x.y}`);
 
+  // Calcula totais por mês — robusto a datas no formato Date do Sheets ou ISO
   const recebidoKg = meses.map(({ y, m }) =>
-    ops.filter(op => {
+    ops.reduce((acc, op) => {
+      if (!op.data_criacao) return acc;
       const d = new Date(op.data_criacao);
-      return d.getFullYear() === y && d.getMonth() + 1 === m;
-    }).reduce((acc, op) => acc + (parseFloat(op.quantidade_recebida_kg) || 0), 0)
+      if (isNaN(d)) return acc;
+      if (d.getFullYear() === y && d.getMonth() + 1 === m) {
+        acc += parseFloat(op.quantidade_recebida_kg) || 0;
+      }
+      return acc;
+    }, 0)
   );
 
   const produzidoUn = meses.map(({ y, m }) =>
-    apont.filter(ap => {
+    apontamentos.reduce((acc, ap) => {
+      if (!ap.data_apontamento) return acc;
       const d = new Date(ap.data_apontamento);
-      return d.getFullYear() === y && d.getMonth() + 1 === m;
-    }).reduce((acc, ap) => acc + (parseFloat(ap.quantidade_produzida) || 0), 0)
+      if (isNaN(d)) return acc;
+      if (d.getFullYear() === y && d.getMonth() + 1 === m) {
+        acc += parseFloat(ap.quantidade_produzida) || 0;
+      }
+      return acc;
+    }, 0)
   );
 
-  const W = el.offsetWidth || 600;
+  // Verifica se há dados reais
+  const temDados = recebidoKg.some(v => v > 0) || produzidoUn.some(v => v > 0);
+
+  // Usa viewBox fixo de 700px — evita problema de offsetWidth=0
+  const W = 700;
   const H = 260;
   const padL = 60, padR = 20, padT = 30, padB = 50;
   const gW = W - padL - padR;
@@ -912,11 +995,11 @@ async function renderGrafico(mesIni, anoIni, mesFim, anoFim, mostrar) {
     const hUn = (produzidoUn[i] / maxUn) * gH;
 
     if (showEnt) {
-      barsEnt += `<rect x="${x - barW - 2}" y="${padT + scaleKg(recebidoKg[i])}" width="${barW}" height="${hKg}" fill="#3b82f6" rx="3" opacity="0.85">
+      barsEnt += `<rect x="${x - barW - 2}" y="${padT + scaleKg(recebidoKg[i])}" width="${barW}" height="${Math.max(hKg,0)}" fill="#3b82f6" rx="3" opacity="0.85">
         <title>Recebido: ${recebidoKg[i].toFixed(1)} kg</title></rect>`;
     }
     if (showSai) {
-      barsSai += `<rect x="${x + 2}" y="${padT + scaleUn(produzidoUn[i])}" width="${barW}" height="${hUn}" fill="#22c55e" rx="3" opacity="0.85">
+      barsSai += `<rect x="${x + 2}" y="${padT + scaleUn(produzidoUn[i])}" width="${barW}" height="${Math.max(hUn,0)}" fill="#22c55e" rx="3" opacity="0.85">
         <title>Produzido: ${produzidoUn[i]} un</title></rect>`;
     }
   });
@@ -955,6 +1038,10 @@ async function renderGrafico(mesIni, anoIni, mesFim, anoFim, mostrar) {
   const labelKg = showEnt ? `<text x="14" y="${H/2}" text-anchor="middle" fill="#3b82f6" font-size="11" transform="rotate(-90,14,${H/2})">Recebido (kg)</text>` : '';
   const labelUn = showSai ? `<text x="${W-8}" y="${H/2}" text-anchor="middle" fill="#22c55e" font-size="11" transform="rotate(90,${W-8},${H/2})">Produzido (un)</text>` : '';
 
+  const avisoSemDados = !temDados
+    ? `<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="#94a3b8" font-size="13">Sem dados no período selecionado</text>`
+    : '';
+
   el.innerHTML = `
     <svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
       ${gridLines}
@@ -963,6 +1050,7 @@ async function renderGrafico(mesIni, anoIni, mesFim, anoFim, mostrar) {
       ${yAxisKg}${yAxisUn}
       ${xLabels}
       ${labelKg}${labelUn}
+      ${avisoSemDados}
       <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT+gH}" stroke="#475569" stroke-width="1"/>
       <line x1="${padL}" y1="${padT+gH}" x2="${W-padR}" y2="${padT+gH}" stroke="#475569" stroke-width="1"/>
     </svg>
@@ -987,7 +1075,7 @@ function htmlGrafico() {
   if (mIni <= 0) { mIni += 12; aIni--; }
 
   return `
-    <div class="card" style="margin-bottom:20px">
+    <div class="card" id="bloco-grafico-dashboard" style="margin-bottom:20px">
       <div class="card-titulo">📊 Recebimento vs Produção</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px">
         <div class="form-group" style="min-width:120px">
@@ -1094,7 +1182,6 @@ function renderDashboardOperador(r) {
     { label: 'Status', render: op => badgeStatus(op.status) },
     { label: 'Dias úteis', render: op => renderDiasUteis(op) }
   ], op => {
-    // OPs "Aguardando Coleta" só permitem apontamento de Coleta
     const btnApontar = op.status !== 'Aguardando Coleta'
       ? `<button class="btn btn-sm btn-verde" onclick="App.navegar('apontamento');setTimeout(()=>Telas.apontamento('${op.id}'),100)">Apontar</button>`
       : `<button class="btn btn-sm btn-amarelo" onclick="App.navegar('apontamento');setTimeout(()=>Telas.apontamento('${op.id}'),100)">📦 Registrar Coleta</button>`;
@@ -1144,7 +1231,6 @@ function renderDashboardOperador(r) {
   `;
 }
 
-// Renderiza o campo de dias úteis com cor e indicador de encerrado
 function renderDiasUteis(op) {
   const dias = op.dias_uteis_aberta || 0;
   if (op.status === 'Aguardando Coleta') {
@@ -1296,7 +1382,6 @@ const Acoes = {
     Autocomplete._apKgOp = parseFloat(kg) || 0;
     if (kgInput) kgInput.value = kg ? kg + ' kg' : '';
 
-    // Se a OP está "Aguardando Coleta", pré-seleciona o tipo "Coleta"
     if (statusOp === 'Aguardando Coleta' && selTipo) {
       selTipo.value = 'Coleta';
     }
@@ -1329,7 +1414,6 @@ const Acoes = {
     const pesoFinal = Autocomplete._apPesoFinal || 0;
     const resultado = document.getElementById('ap-resultado');
 
-    // Mostra resultado para Producao_Concluida e Coleta também
     if (tipo !== 'Producao_Concluida' && tipo !== 'Coleta' && tipo !== 'Final' || !resultado) {
       if (resultado) resultado.style.display = 'none';
       return;
