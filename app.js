@@ -827,8 +827,8 @@ const Telas = {
     `;
 
     const W = 700;
-    const H = 280;
-    const padL = 70, padR = 20, padT = 30, padB = 50;
+    const H = 310;
+    const padL = 70, padR = 20, padT = 44, padB = 50;
     const gW = W - padL - padR;
     const gH = H - padT - padB;
     const n = dados.length;
@@ -838,6 +838,14 @@ const Telas = {
     const allVals = dados.flatMap(d => [d.receita, d.despesas_op + d.despesas_pessoas, Math.abs(d.lucro)]);
     const maxV = Math.max(...allVals, 1);
     const scaleV = v => gH - (Math.abs(v) / maxV) * gH;
+
+    // Formato compacto para labels do DRE: R$12k, R$1.5k, R$800
+    function fmtDRE(v) {
+      if (v === 0) return '';
+      const abs = Math.abs(v);
+      if (abs >= 1000) return 'R$' + (abs/1000).toFixed(1).replace('.0','') + 'k';
+      return 'R$' + abs.toFixed(0);
+    }
 
     let barsReceita = '', barsDespesas = '', barsLucro = '', xLabels = '', gridLines = '', yAxis = '';
 
@@ -851,13 +859,23 @@ const Telas = {
     dados.forEach((d, i) => {
       const x = padL + gap * i + gap / 2;
       const hRec = (d.receita / maxV) * gH;
-      barsReceita += `<rect x="${x - barW*1.5 - 2}" y="${padT + scaleV(d.receita)}" width="${barW}" height="${hRec}" fill="#3b82f6" rx="2" opacity="0.85"/>`;
+      const yRec = padT + scaleV(d.receita);
+      barsReceita += `<rect x="${x - barW*1.5 - 2}" y="${yRec}" width="${barW}" height="${hRec}" fill="#3b82f6" rx="2" opacity="0.85"/>`;
+      if (d.receita > 0) barsReceita += `<text x="${x - barW*1.5 - 2 + barW/2}" y="${yRec - 3}" text-anchor="middle" fill="#93c5fd" font-size="8" font-weight="600">${fmtDRE(d.receita)}</text>`;
+
       const totalDesp = d.despesas_op + d.despesas_pessoas;
       const hDesp = (totalDesp / maxV) * gH;
-      barsDespesas += `<rect x="${x - barW/2}" y="${padT + scaleV(totalDesp)}" width="${barW}" height="${hDesp}" fill="#f87171" rx="2" opacity="0.85"/>`;
+      const yDesp = padT + scaleV(totalDesp);
+      barsDespesas += `<rect x="${x - barW/2}" y="${yDesp}" width="${barW}" height="${hDesp}" fill="#f87171" rx="2" opacity="0.85"/>`;
+      if (totalDesp > 0) barsDespesas += `<text x="${x}" y="${yDesp - 3}" text-anchor="middle" fill="#fca5a5" font-size="8" font-weight="600">${fmtDRE(totalDesp)}</text>`;
+
       const hLuc = (Math.abs(d.lucro) / maxV) * gH;
       const corLucro = d.lucro >= 0 ? '#22c55e' : '#ef4444';
-      barsLucro += `<rect x="${x + barW/2 + 2}" y="${padT + scaleV(Math.abs(d.lucro))}" width="${barW}" height="${hLuc}" fill="${corLucro}" rx="2" opacity="0.85"/>`;
+      const corLabel = d.lucro >= 0 ? '#86efac' : '#fca5a5';
+      const yLuc = padT + scaleV(Math.abs(d.lucro));
+      barsLucro += `<rect x="${x + barW/2 + 2}" y="${yLuc}" width="${barW}" height="${hLuc}" fill="${corLucro}" rx="2" opacity="0.85"/>`;
+      if (d.lucro !== 0) barsLucro += `<text x="${x + barW + 2}" y="${yLuc - 3}" text-anchor="middle" fill="${corLabel}" font-size="8" font-weight="600">${fmtDRE(d.lucro)}</text>`;
+
       xLabels += `<text x="${x}" y="${H-8}" text-anchor="middle" fill="#94a3b8" font-size="10">${d.mes}</text>`;
     });
 
@@ -971,8 +989,8 @@ async function renderGrafico(mesIni, anoIni, mesFim, anoFim, mostrar) {
 
   // Usa viewBox fixo de 700px — evita problema de offsetWidth=0
   const W = 700;
-  const H = 260;
-  const padL = 60, padR = 20, padT = 30, padB = 50;
+  const H = 290;
+  const padL = 60, padR = 20, padT = 44, padB = 50;
   const gW = W - padL - padR;
   const gH = H - padT - padB;
   const n = labels.length;
@@ -988,19 +1006,36 @@ async function renderGrafico(mesIni, anoIni, mesFim, anoFim, mostrar) {
   const showEnt = mostrar !== 'saida';
   const showSai = mostrar !== 'entrada';
 
+  // Formata valor para label compacto: 1200 → "1.2k", 500 → "500"
+  function fmtLabel(v, decimais = 0) {
+    if (v === 0) return '';
+    if (v >= 1000) return (v / 1000).toFixed(1).replace('.0','') + 'k';
+    return v.toFixed(decimais);
+  }
+
   let barsEnt = '', barsSai = '', linePoints = '', dots = '';
   labels.forEach((lb, i) => {
     const x = padL + gap * i + gap / 2;
     const hKg = (recebidoKg[i] / maxKg) * gH;
     const hUn = (produzidoUn[i] / maxUn) * gH;
+    const yBarKg = padT + scaleKg(recebidoKg[i]);
+    const yBarUn = padT + scaleUn(produzidoUn[i]);
 
     if (showEnt) {
-      barsEnt += `<rect x="${x - barW - 2}" y="${padT + scaleKg(recebidoKg[i])}" width="${barW}" height="${Math.max(hKg,0)}" fill="#3b82f6" rx="3" opacity="0.85">
+      barsEnt += `<rect x="${x - barW - 2}" y="${yBarKg}" width="${barW}" height="${Math.max(hKg,0)}" fill="#3b82f6" rx="3" opacity="0.85">
         <title>Recebido: ${recebidoKg[i].toFixed(1)} kg</title></rect>`;
+      // Label acima da barra azul (só se tiver valor)
+      if (recebidoKg[i] > 0) {
+        barsEnt += `<text x="${x - barW/2 - 2}" y="${yBarKg - 4}" text-anchor="middle" fill="#93c5fd" font-size="9" font-weight="600">${fmtLabel(recebidoKg[i],1)}</text>`;
+      }
     }
     if (showSai) {
-      barsSai += `<rect x="${x + 2}" y="${padT + scaleUn(produzidoUn[i])}" width="${barW}" height="${Math.max(hUn,0)}" fill="#22c55e" rx="3" opacity="0.85">
+      barsSai += `<rect x="${x + 2}" y="${yBarUn}" width="${barW}" height="${Math.max(hUn,0)}" fill="#22c55e" rx="3" opacity="0.85">
         <title>Produzido: ${produzidoUn[i]} un</title></rect>`;
+      // Label acima da barra verde (só se tiver valor)
+      if (produzidoUn[i] > 0) {
+        barsSai += `<text x="${x + barW/2 + 2}" y="${yBarUn - 4}" text-anchor="middle" fill="#86efac" font-size="9" font-weight="600">${fmtLabel(produzidoUn[i])}</text>`;
+      }
     }
   });
 
