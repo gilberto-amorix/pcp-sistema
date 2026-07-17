@@ -982,6 +982,9 @@ async function renderGrafico(mesIni, anoIni, mesFim, anoFim, mostrar) {
 
   const produzidoUn = meses.map(({ y, m }) =>
     apontamentos.reduce((acc, ap) => {
+      // Só conta apontamentos de Coleta — Parcial e Produção Concluída são
+      // controle interno e duplicariam a quantidade real produzida.
+      if (ap.tipo_apontamento !== 'Coleta') return acc;
       if (!ap.data_apontamento) return acc;
       const d = new Date(ap.data_apontamento);
       if (isNaN(d)) return acc;
