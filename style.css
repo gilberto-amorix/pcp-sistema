@@ -182,6 +182,10 @@ nav { flex: 1; padding: 10px 0; overflow-y: auto; }
 
 /* ======================== TABELAS — DESKTOP ======================== */
 .tabela-wrap { overflow-x: auto; }
+.drilldown-wrap { padding: 4px 0 12px 44px; background: rgba(255,255,255,.02); }
+.tabela-drilldown { width: auto; min-width: 280px; font-size: 12px; }
+.tabela-drilldown th { background: var(--bg3); padding: 6px 12px; color: var(--text-soft); }
+.tabela-drilldown td { padding: 6px 12px; border-bottom: 1px solid var(--border); }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 thead th {
   background: var(--bg3); color: var(--text-soft); font-weight: 600;
